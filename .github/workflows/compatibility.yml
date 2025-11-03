@@ -31,7 +31,7 @@ jobs:
 
           echo "Found $(echo "$TAGS" | wc -l) total tags"
 
-          # Parse versions and filter >= v0.30.0
+          # Parse versions and filter >= v0.40.0
           # Group by minor version and find latest patch
           VERSIONS=$(echo "$TAGS" | \
             awk -F'[.v]' '
@@ -41,8 +41,8 @@ jobs:
               minor = $3
               patch = $4
 
-              # Filter: major == 0 and minor >= 30
-              if (major == 0 && minor >= 30) {
+              # Filter: major == 0 and minor >= 40
+              if (major == 0 && minor >= 40) {
                 minor_key = major "." minor
                 full_version = major "." minor "." patch
 
@@ -65,7 +65,7 @@ jobs:
               printf "]"
             }')
 
-          echo "Filtered versions (>= v0.30.0, latest patch per minor):"
+          echo "Filtered versions (>= v0.40.0, latest patch per minor):"
           echo "$VERSIONS" | jq -r '.[]' | sort -V
 
           VERSION_COUNT=$(echo "$VERSIONS" | jq '. | length')

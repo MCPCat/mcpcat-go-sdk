@@ -1,35 +1,54 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://mcpcat.io/mcpcat-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://mcpcat.io/mcpcat-light.svg">
-    <img alt="MCPcat logo" src="https://mcpcat.io/mcpcat-light.svg" width="400">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/static/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/static/logo-light.svg">
+    <img alt="MCPcat Logo" src="docs/static/logo-light.svg" width="80%">
   </picture>
 </div>
+<h3 align="center">
+    <a href="#getting-started">Getting Started</a>
+    <span> · </span>
+    <a href="#why-use-mcpcat-">Features</a>
+    <span> · </span>
+    <a href="https://docs.mcpcat.io">Docs</a>
+    <span> · </span>
+    <a href="https://mcpcat.io">Website</a>
+    <span> · </span>
+    <a href="#free-for-open-source">Open Source</a>
+    <span> · </span>
+    <a href="https://meet.mcpcat.io/meet">Schedule a Demo</a>
+</h3>
+<p align="center">
+  <a href="https://badge.fury.io/js/mcpcat"><img src="https://badge.fury.io/js/mcpcat.svg" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/mcpcat"><img src="https://img.shields.io/npm/dm/mcpcat.svg" alt="npm downloads"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg" alt="TypeScript"></a>
+  <a href="https://github.com/MCPCat/mcpcat-typescript-sdk/issues"><img src="https://img.shields.io/github/issues/MCPCat/mcpcat-typescript-sdk.svg" alt="GitHub issues"></a>
+  <a href="https://github.com/MCPCat/mcpcat-typescript-sdk/actions"><img src="https://github.com/MCPCat/mcpcat-typescript-sdk/workflows/CI/badge.svg" alt="CI"></a>
+</p>
 
-# MCPcat Go SDK
+> [!NOTE]
+> Looking for the Python SDK? Check it out here [mcpcat-python](https://github.com/mcpcat/mcpcat-python-sdk).
 
-**MCPcat** is an analytics platform for MCP server owners. MCPcat helps developers and product owners build, improve, and monitor their MCP servers by capturing user analytics and tracing tool calls.
+## Why use MCPcat? 🤔
 
-## Features
+MCPcat helps developers and product owners build, improve, and monitor their MCP servers by capturing user analytics and tracing tool calls.
 
-### 🎬 User Session Replay
-Replay user sessions to understand how users interact with your MCP server and identify patterns in tool usage.
+Use MCPcat for:
 
-### 🔍 Trace Debugging
-Debug issues by tracing tool calls and analyzing execution paths with detailed telemetry data.
+- **User session replay** 🎬. Follow alongside your users to understand why they're using your MCP servers, what functionality you're missing, and what clients they're coming from.
+- **Trace debugging** 🔍. See where your users are getting stuck, track and find when LLMs get confused by your API, and debug sessions across all deployments of your MCP server.
+- **Existing platform support** 📊. Get logging and tracing out of the box for your existing observability platforms (OpenTelemetry, Datadog, Sentry) — eliminating the tedious work of implementing telemetry yourself.
 
-### 📊 Telemetry Support
-Forward telemetry to your existing observability platforms including OpenTelemetry, Datadog, and Sentry.
 
-## Installation
+<img width="1274" height="770" alt="mcpcat-diagram" src="https://github.com/user-attachments/assets/2d75de19-5b69-4f8b-aea9-43161de5a2ba" />
 
-```bash
-go get github.com/mcpcat/mcpcat-go-sdk
-```
 
-## Quick Start
+## Getting Started
 
-Add MCPcat tracking to your MCP server with just a few lines:
+To get started with MCPcat, first create an account and obtain your project ID by signing up at [mcpcat.io](https://mcpcat.io). For detailed setup instructions visit our [documentation](https://docs.mcpcat.io).
+
+Once you have your project ID, integrate MCPcat into your MCP server:
 
 ```go
 package main
@@ -89,7 +108,7 @@ Get your project ID by signing up at [mcpcat.io](https://mcpcat.io).
 
 ### User Identification
 
-Attach user information to sessions for better analytics:
+You can identify your user sessions with a simple callback MCPcat exposes, called `Identify`.
 
 ```go
 func identifyUser(ctx context.Context, request any) *mcpcat.UserIdentity {
@@ -112,7 +131,7 @@ _, err := mcpcat.SetupTracking(s, hooks, &projectID, &options)
 
 ### Sensitive Data Redaction
 
-Automatically redact sensitive information before sending to MCPcat:
+MCPcat redacts all data sent to its servers and encrypts at rest, but for additional security, it offers a hook to do your own redaction on all text data returned back to our servers.
 
 ```go
 import "regexp"
@@ -179,21 +198,21 @@ type Options struct {
     // Exporters []ExporterConfig
 }
 ```
+## Free for open source
 
-## Open Source Support
+MCPcat is free for qualified open source projects. We believe in supporting the ecosystem that makes MCP possible. If you maintain an open source MCP server, you can access our full analytics platform at no cost.
 
-MCPcat offers free analytics for qualified open source projects. Apply by emailing [hi@mcpcat.io](mailto:hi@mcpcat.io).
+**How to apply**: Email hi@mcpcat.io with your repository link
 
-## Community
+_Already using MCPcat? We'll upgrade your account immediately._
 
-Share your cat photos and join the MCPcat community!
+## Community Cats 🐱
 
----
+Meet the cats behind MCPcat! Add your cat to our community by submitting a PR with your cat's photo in the `docs/cats/` directory.
 
-<div align="center">
-  <p>
-    <a href="https://mcpcat.io">Website</a> •
-    <a href="https://mcpcat.io/demo">Schedule a Demo</a> •
-    <a href="https://docs.mcpcat.io">Documentation</a>
-  </p>
+<div align="left">
+  <img src="docs/cats/bibi.png" alt="bibi" width="80" height="80">
+  <img src="docs/cats/zelda.jpg" alt="zelda" width="80" height="80">
 </div>
+
+_Want to add your cat? Create a PR adding your cat's photo to `docs/cats/` and update this section!_

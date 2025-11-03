@@ -19,12 +19,12 @@
     <a href="https://meet.mcpcat.io/meet">Schedule a Demo</a>
 </h3>
 <p align="center">
-  <a href="https://badge.fury.io/js/mcpcat"><img src="https://badge.fury.io/js/mcpcat.svg" alt="npm version"></a>
-  <a href="https://www.npmjs.com/package/mcpcat"><img src="https://img.shields.io/npm/dm/mcpcat.svg" alt="npm downloads"></a>
+  <a href="https://pkg.go.dev/github.com/mcpcat/mcpcat-go-sdk"><img src="https://pkg.go.dev/badge/github.com/mcpcat/mcpcat-go-sdk.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/mcpcat/mcpcat-go-sdk"><img src="https://goreportcard.com/badge/github.com/mcpcat/mcpcat-go-sdk" alt="Go Report Card"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/%3C%2F%3E-TypeScript-%230074c1.svg" alt="TypeScript"></a>
-  <a href="https://github.com/MCPCat/mcpcat-typescript-sdk/issues"><img src="https://img.shields.io/github/issues/MCPCat/mcpcat-typescript-sdk.svg" alt="GitHub issues"></a>
-  <a href="https://github.com/MCPCat/mcpcat-typescript-sdk/actions"><img src="https://github.com/MCPCat/mcpcat-typescript-sdk/workflows/CI/badge.svg" alt="CI"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go" alt="Go Version"></a>
+  <a href="https://github.com/mcpcat/mcpcat-go-sdk/issues"><img src="https://img.shields.io/github/issues/mcpcat/mcpcat-go-sdk.svg" alt="GitHub issues"></a>
+  <a href="https://github.com/mcpcat/mcpcat-go-sdk/actions"><img src="https://github.com/mcpcat/mcpcat-go-sdk/workflows/CI/badge.svg" alt="CI"></a>
 </p>
 
 > [!NOTE]

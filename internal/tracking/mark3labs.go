@@ -3,6 +3,7 @@ package tracking
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +17,15 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk/internal/session"
 )
 
+// eventPublisher is an interface for publishing events
+// This allows for easier testing with mock implementations
+type eventPublisher interface {
+	Publish(evt *core.Event)
+	Shutdown()
+}
+
 var (
-	globalPublisher     *publisher.Publisher
+	globalPublisher     eventPublisher
 	globalPublisherOnce sync.Once
 )
 
@@ -74,6 +82,23 @@ func AddTracingToHooks(hooks *server.Hooks, redactFn core.RedactFunc) {
 		// Capture session using context, passing both request and result
 		sess := session.CaptureSessionFromMark3LabsContext(ctx, message, result)
 
+		// Check if result is a CallToolResult with IsError=true
+		isError := false
+		var errorDetails error
+		if toolResult, ok := result.(*mcp.CallToolResult); ok && toolResult.IsError {
+			isError = true
+			// Concatenate all text content items to form the error message
+			var errorMessages []string
+			for _, content := range toolResult.Content {
+				if textContent, ok := content.(mcp.TextContent); ok {
+					errorMessages = append(errorMessages, textContent.Text)
+				}
+			}
+			if len(errorMessages) > 0 {
+				errorDetails = fmt.Errorf("%s", strings.Join(errorMessages, " "))
+			}
+		}
+
 		// Create event from session
 		evt := event.CreateEventForSession(
 			sess,
@@ -81,13 +106,17 @@ func AddTracingToHooks(hooks *server.Hooks, redactFn core.RedactFunc) {
 			message,
 			result,
 			duration,
-			false, // not an error
-			nil,   // no error details
+			isError,
+			errorDetails,
 		)
 
 		// Log and publish event
 		if evt != nil {
-			event.LogEvent(logger, evt, fmt.Sprintf("Success Event for %s", method))
+			logMsg := "Success Event for %s"
+			if isError {
+				logMsg = "Error Event for %s"
+			}
+			event.LogEvent(logger, evt, fmt.Sprintf(logMsg, method))
 			// Publish event to API asynchronously
 			if globalPublisher != nil {
 				globalPublisher.Publish(evt)

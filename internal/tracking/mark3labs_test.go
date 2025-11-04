@@ -3,6 +3,7 @@ package tracking
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -809,6 +810,79 @@ func TestIntegration_DifferentMCPMethods(t *testing.T) {
 			// Should handle different methods correctly
 		})
 	}
+}
+
+func TestToolResultErrorDetection(t *testing.T) {
+	t.Run("detects CallToolResult with IsError=true", func(t *testing.T) {
+		// Create a tool result with IsError=true
+		result := mcp.NewToolResultError("Tool execution failed")
+
+		// Verify it would be detected as an error
+		toolResult, ok := interface{}(result).(*mcp.CallToolResult)
+		if !ok {
+			t.Fatal("expected result to be a CallToolResult")
+		}
+
+		if !toolResult.IsError {
+			t.Error("expected IsError=true")
+		}
+
+		// Verify error message extraction
+		if len(toolResult.Content) == 0 {
+			t.Fatal("expected content to have at least one item")
+		}
+
+		textContent, ok := toolResult.Content[0].(mcp.TextContent)
+		if !ok {
+			t.Fatal("expected first content item to be TextContent")
+		}
+
+		expectedMsg := "Tool execution failed"
+		if textContent.Text != expectedMsg {
+			t.Errorf("expected message '%s', got '%s'", expectedMsg, textContent.Text)
+		}
+	})
+
+	t.Run("detects CallToolResult with IsError=false", func(t *testing.T) {
+		// Create a successful tool result
+		result := mcp.NewToolResultText("Success")
+
+		toolResult, ok := interface{}(result).(*mcp.CallToolResult)
+		if !ok {
+			t.Fatal("expected result to be a CallToolResult")
+		}
+
+		if toolResult.IsError {
+			t.Error("expected IsError=false for successful result")
+		}
+	})
+
+	t.Run("concatenates multiple text content items", func(t *testing.T) {
+		// Create a result with multiple text items
+		result := &mcp.CallToolResult{
+			Content: []mcp.Content{
+				mcp.TextContent{Type: "text", Text: "Error:"},
+				mcp.TextContent{Type: "text", Text: "Invalid parameter."},
+				mcp.TextContent{Type: "text", Text: "Expected string."},
+			},
+			IsError: true,
+		}
+
+		// Extract and concatenate messages
+		var messages []string
+		for _, content := range result.Content {
+			if textContent, ok := content.(mcp.TextContent); ok {
+				messages = append(messages, textContent.Text)
+			}
+		}
+
+		concatenated := strings.Join(messages, " ")
+		expected := "Error: Invalid parameter. Expected string."
+
+		if concatenated != expected {
+			t.Errorf("expected '%s', got '%s'", expected, concatenated)
+		}
+	})
 }
 
 // ============================================================================

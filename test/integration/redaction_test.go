@@ -20,7 +20,7 @@ func TestRedaction_FunctionIsInvoked(t *testing.T) {
 	emailRe := regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
 
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 		RedactSensitiveInformation: func(text string) string {
 			return emailRe.ReplaceAllString(text, "[REDACTED]")
@@ -49,7 +49,7 @@ func TestRedaction_FunctionIsInvoked(t *testing.T) {
 // calls should continue to work normally even when redaction panics.
 func TestRedaction_PanicInRedactFnDoesNotCrashServer(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 		RedactSensitiveInformation: func(text string) string {
 			panic("redaction panic!")
@@ -78,7 +78,7 @@ func TestRedaction_PanicInRedactFnDoesNotCrashServer(t *testing.T) {
 func TestRedaction_NilRedactFnDoesNotInterfere(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
 		EnableReportMissing:        false,
-		EnableToolCallContext:       false,
+		EnableToolCallContext:      false,
 		RedactSensitiveInformation: nil,
 	})
 

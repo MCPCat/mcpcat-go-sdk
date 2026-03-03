@@ -41,9 +41,9 @@ func TestTrackInternal_CustomOptionsPreserved(t *testing.T) {
 	mcpServer := server.NewMCPServer("test-custom-opts", "1.0.0", server.WithToolCapabilities(true))
 
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
-		Debug:                true,
+		Debug:                 true,
 	}
 
 	err := mcpcat.Track(mcpServer, "proj_custom", opts)

@@ -15,7 +15,7 @@ import (
 // without panics: BeforeAny -> session capture -> event creation -> publish.
 func TestSessionCapture_FieldsPopulated(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 
@@ -42,7 +42,7 @@ func TestSessionCapture_ServerInfoFromInitialize(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {
@@ -104,9 +104,9 @@ func TestSessionCapture_IdentifyFunctionCalled(t *testing.T) {
 	}
 
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
-		Identify:             identifyFn,
+		Identify:              identifyFn,
 	})
 
 	// Verify the Identify function is stored correctly on the MCPcat instance.
@@ -165,9 +165,9 @@ func TestSessionCapture_IdentifyNilResult(t *testing.T) {
 	}
 
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
-		Identify:             identifyFn,
+		Identify:              identifyFn,
 	})
 
 	// Verify the Identify function is stored correctly.
@@ -219,7 +219,7 @@ func TestSessionCapture_MultipleClientsGetSeparateSessions(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {

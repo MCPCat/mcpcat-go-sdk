@@ -107,7 +107,7 @@ func setupStdio(t *testing.T, opts *mcpcat.Options) *client.Client {
 // real stdio transport.
 func TestStdio_FullPipeline(t *testing.T) {
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	}
 
@@ -149,7 +149,7 @@ func TestStdio_Identify(t *testing.T) {
 	// Subtest 1: Identify fires on the first tool call.
 	t.Run("Invoked", func(t *testing.T) {
 		opts := &mcpcat.Options{
-			EnableReportMissing:  false,
+			EnableReportMissing:   false,
 			EnableToolCallContext: false,
 			Identify: func(ctx context.Context, request any) *mcpcat.UserIdentity {
 				identifyCount.Add(1)
@@ -186,7 +186,7 @@ func TestStdio_Identify(t *testing.T) {
 	// Subtest 2: Identify does NOT fire again (session already identified).
 	t.Run("Dedup", func(t *testing.T) {
 		opts := &mcpcat.Options{
-			EnableReportMissing:  false,
+			EnableReportMissing:   false,
 			EnableToolCallContext: false,
 			Identify: func(ctx context.Context, request any) *mcpcat.UserIdentity {
 				identifyCount.Add(1)
@@ -226,7 +226,7 @@ func TestStdio_ServerInfo(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	}
 	err := mcpcat.Track(mcpServer, "test_project", opts)

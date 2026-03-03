@@ -87,10 +87,12 @@ func TestToolCallTracking(t *testing.T) {
 		beforeCallCount++
 	})
 
-	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result any) {
-		mu.Lock()
-		defer mu.Unlock()
-		afterCallCount++
+	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
+		if method == mcp.MethodToolsCall {
+			mu.Lock()
+			defer mu.Unlock()
+			afterCallCount++
+		}
 	})
 
 	opts := mcpcat.Options{Debug: false, Hooks: hooks}
@@ -579,8 +581,8 @@ func TestTrack_WithOptions(t *testing.T) {
 	mcpServer := server.NewMCPServer("test-server", "1.0.0", server.WithToolCapabilities(true))
 
 	opts := &mcpcat.Options{
-		Debug:                true,
-		EnableReportMissing:  false,
+		Debug:                 true,
+		EnableReportMissing:   false,
 		EnableToolCallContext: true,
 	}
 	err := mcpcat.Track(mcpServer, "test_project_id", opts)

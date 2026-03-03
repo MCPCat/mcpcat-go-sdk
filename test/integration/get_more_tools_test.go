@@ -14,7 +14,7 @@ import (
 // successful response when called.
 func TestGetMoreTools_RegisteredAndCallable(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  true,
+		EnableReportMissing:   true,
 		EnableToolCallContext: false,
 	})
 
@@ -83,7 +83,7 @@ func TestGetMoreTools_RegisteredAndCallable(t *testing.T) {
 // the tool list.
 func TestGetMoreTools_NotRegisteredWhenDisabled(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 
@@ -106,7 +106,7 @@ func TestGetMoreTools_NotRegisteredWhenDisabled(t *testing.T) {
 // result (IsError=true).
 func TestGetMoreTools_MissingContextReturnsError(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
-		EnableReportMissing:  true,
+		EnableReportMissing:   true,
 		EnableToolCallContext: false,
 	})
 

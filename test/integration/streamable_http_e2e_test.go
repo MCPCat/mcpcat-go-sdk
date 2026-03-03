@@ -73,7 +73,7 @@ func setupStreamableHTTP(t *testing.T, opts *mcpcat.Options) *client.Client {
 // over a real HTTP transport.
 func TestStreamableHTTP_FullPipeline(t *testing.T) {
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	}
 
@@ -107,7 +107,7 @@ func TestStreamableHTTP_IdentifyInvoked(t *testing.T) {
 	var identifyCount atomic.Int32
 
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 		Identify: func(ctx context.Context, request any) *mcpcat.UserIdentity {
 			identifyCount.Add(1)
@@ -145,7 +145,7 @@ func TestStreamableHTTP_IdentifyDedup(t *testing.T) {
 	var identifyCount atomic.Int32
 
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 		Identify: func(ctx context.Context, request any) *mcpcat.UserIdentity {
 			identifyCount.Add(1)
@@ -201,7 +201,7 @@ func TestStreamableHTTP_ServerInfo(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	opts := &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	}
 	err := mcpcat.Track(mcpServer, "test_project", opts)

@@ -14,7 +14,7 @@ import (
 func TestContextParam_InjectedIntoToolSchemas(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
 		EnableToolCallContext: true,
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 	})
 
 	ctx := context.Background()
@@ -45,7 +45,7 @@ func TestContextParam_InjectedIntoToolSchemas(t *testing.T) {
 func TestContextParam_NotInjectedWhenDisabled(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
 		EnableToolCallContext: false,
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 	})
 
 	ctx := context.Background()
@@ -77,7 +77,7 @@ func TestContextParam_NotInjectedWhenDisabled(t *testing.T) {
 func TestContextParam_IntentPassedThroughToolCall(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
 		EnableToolCallContext: true,
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 	})
 
 	result := h.callTool("add_todo", map[string]any{
@@ -95,7 +95,7 @@ func TestContextParam_IntentPassedThroughToolCall(t *testing.T) {
 func TestContextParam_ToolCallWorksWithoutContextArg(t *testing.T) {
 	h := newHarness(t, &mcpcat.Options{
 		EnableToolCallContext: true,
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 	})
 
 	result := h.callTool("add_todo", map[string]any{

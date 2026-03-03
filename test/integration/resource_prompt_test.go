@@ -19,7 +19,7 @@ func setupTrackedFullServer(t *testing.T) (client.MCPClient, context.Context) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {
@@ -58,7 +58,7 @@ func TestResourceTracking_ListResources(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {
@@ -114,7 +114,7 @@ func TestResourceTracking_ReadResource(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {
@@ -178,7 +178,7 @@ func TestPromptTracking_ListPrompts(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {
@@ -234,7 +234,7 @@ func TestPromptTracking_GetPrompt(t *testing.T) {
 	mcpServer, _ := CreateFullServer()
 
 	err := mcpcat.Track(mcpServer, "test_project", &mcpcat.Options{
-		EnableReportMissing:  false,
+		EnableReportMissing:   false,
 		EnableToolCallContext: false,
 	})
 	if err != nil {

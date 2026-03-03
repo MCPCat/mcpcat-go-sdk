@@ -14,20 +14,17 @@ func main() {
 	// Optional but recommended: ensures graceful shutdown on normal exit
 	defer mcpcat.Shutdown()
 
-	hooks := &server.Hooks{}
 	s := server.NewMCPServer(
 		"Demo 🚀",
 		"1.0.0",
 		server.WithToolCapabilities(false),
-		server.WithHooks(hooks),
 	)
 
-	projectID := "proj_XXXXXX"
-	options := mcpcat.DefaultOptions()
-	options.Debug = true
-	options.Identify = identifyUser
-	options.RedactSensitiveInformation = redactSensitiveData
-	_, err := mcpcat.SetupTracking(s, hooks, &projectID, &options)
+	err := mcpcat.Track(s, "proj_XXXXXX", &mcpcat.Options{
+		Debug:                      true,
+		Identify:                   identifyUser,
+		RedactSensitiveInformation: redactSensitiveData,
+	})
 	if err != nil {
 		fmt.Printf("Failed to setup tracking: %v\n", err)
 		return

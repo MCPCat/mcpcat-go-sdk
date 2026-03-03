@@ -22,7 +22,7 @@
   <a href="https://pkg.go.dev/github.com/mcpcat/mcpcat-go-sdk"><img src="https://pkg.go.dev/badge/github.com/mcpcat/mcpcat-go-sdk.svg" alt="Go Reference"></a>
   <a href="https://goreportcard.com/report/github.com/mcpcat/mcpcat-go-sdk"><img src="https://goreportcard.com/badge/github.com/mcpcat/mcpcat-go-sdk" alt="Go Report Card"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go" alt="Go Version"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go" alt="Go Version"></a>
   <a href="https://github.com/mcpcat/mcpcat-go-sdk/issues"><img src="https://img.shields.io/github/issues/mcpcat/mcpcat-go-sdk.svg" alt="GitHub issues"></a>
   <a href="https://github.com/mcpcat/mcpcat-go-sdk/actions"><img src="https://github.com/mcpcat/mcpcat-go-sdk/workflows/CI/badge.svg" alt="CI"></a>
 </p>
@@ -66,18 +66,14 @@ func main() {
     // Optional but recommended: ensures graceful shutdown on normal exit
     defer mcpcat.Shutdown()
 
-    hooks := &server.Hooks{}
     s := server.NewMCPServer(
         "Demo Server",
         "1.0.0",
         server.WithToolCapabilities(false),
-        server.WithHooks(hooks),
     )
 
-    // Track your MCP server with MCPcat
-    projectID := "proj_YOUR_PROJECT_ID"
-    _, err := mcpcat.SetupTracking(s, hooks, &projectID, nil)
-    if err != nil {
+    // Track your MCP server with MCPcat — one line setup
+    if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", nil); err != nil {
         fmt.Printf("Failed to setup tracking: %v\n", err)
         return
     }
@@ -92,7 +88,10 @@ func main() {
     )
 
     s.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        name, _ := request.RequireString("name")
+        name, err := request.RequireString("name")
+        if err != nil {
+            return mcp.NewToolResultError(err.Error()), nil
+        }
         return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", name)), nil
     })
 
@@ -124,9 +123,12 @@ func identifyUser(ctx context.Context, request any) *mcpcat.UserIdentity {
     }
 }
 
-options := mcpcat.DefaultOptions()
-options.Identify = identifyUser
-_, err := mcpcat.SetupTracking(s, hooks, &projectID, &options)
+if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    Identify: identifyUser,
+}); err != nil {
+    fmt.Printf("Failed to setup tracking: %v\n", err)
+    return
+}
 ```
 
 ### Sensitive Data Redaction
@@ -152,9 +154,12 @@ func redactSensitiveData(text string) string {
     return text
 }
 
-options := mcpcat.DefaultOptions()
-options.RedactSensitiveInformation = redactSensitiveData
-_, err := mcpcat.SetupTracking(s, hooks, &projectID, &options)
+if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    RedactSensitiveInformation: redactSensitiveData,
+}); err != nil {
+    fmt.Printf("Failed to setup tracking: %v\n", err)
+    return
+}
 ```
 
 ### Debug Mode
@@ -162,9 +167,12 @@ _, err := mcpcat.SetupTracking(s, hooks, &projectID, &options)
 Enable debug logging for troubleshooting:
 
 ```go
-options := mcpcat.DefaultOptions()
-options.Debug = true
-_, err := mcpcat.SetupTracking(s, hooks, &projectID, &options)
+if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    Debug: true,
+}); err != nil {
+    fmt.Printf("Failed to setup tracking: %v\n", err)
+    return
+}
 ```
 
 Debug logs are written to `~/mcpcat.log`.
@@ -181,10 +189,40 @@ func main() {
 }
 ```
 
+### Using with Existing Hooks
+
+If your server already uses mcp-go hooks, pass them via `Options.Hooks` and MCPCat will append its hooks alongside yours:
+
+```go
+hooks := &server.Hooks{}
+hooks.AddBeforeCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest) {
+    log.Printf("Tool called: %s", message.Params.Name)
+})
+
+s := server.NewMCPServer("My Server", "1.0.0")
+
+if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    Hooks: hooks,
+}); err != nil {
+    fmt.Printf("Failed to setup tracking: %v\n", err)
+    return
+}
+```
+
 ## Configuration Options
 
 ```go
 type Options struct {
+    // Pre-existing server hooks to append MCPCat's hooks to.
+    // If nil, MCPCat creates and applies new hooks automatically.
+    Hooks *server.Hooks
+
+    // Adds a "get_more_tools" tool for LLMs to report missing functionality.
+    EnableReportMissing bool  // default: true
+
+    // Injects a "context" parameter to capture user intent on tool calls.
+    EnableToolCallContext bool  // default: true
+
     // Enable debug logging to ~/mcpcat.log
     Debug bool
 
@@ -193,9 +231,6 @@ type Options struct {
 
     // Redact function to sanitize sensitive data before sending
     RedactSensitiveInformation func(text string) string
-
-    // Future: Exporters for telemetry (OpenTelemetry, Datadog, Sentry)
-    // Exporters []ExporterConfig
 }
 ```
 ## Free for open source

@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/mcpcat/mcpcat-go-sdk/internal/compat"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/registry"
@@ -20,58 +19,54 @@ type MCPcat struct {
 	serverRef any // Reference to the tracked server
 }
 
-// SetupTracking configures MCPcat tracking for a server
-func SetupTracking(mcpServer any, hooks *server.Hooks, projectID *string, options *Options) (*MCPcat, error) {
-	// Validate server type
-	serverType := compat.DetectServerType(mcpServer)
-	if serverType != compat.ServerTypeMark3Labs {
-		return nil, fmt.Errorf("SetupTracking: unsupported server type '%s' (expected '%s'), server: %T",
-			serverType, compat.ServerTypeMark3Labs, mcpServer)
+// Track enables MCPcat tracking on an MCP server.
+// It appends MCPCat's hooks to the server. If options.Hooks is provided,
+// MCPCat appends its hooks to that instance (preserving any existing hooks).
+// Otherwise, MCPCat creates and applies new hooks automatically.
+func Track(mcpServer *server.MCPServer, projectID string, options *Options) error {
+	if mcpServer == nil {
+		return fmt.Errorf("Track: mcpServer must not be nil")
+	}
+	if projectID == "" {
+		return fmt.Errorf("Track: projectID must not be empty")
 	}
 
-	// Create MCPcat instance
-	mcpcat := &MCPcat{
-		serverRef: mcpServer,
-		Options:   DefaultOptions(),
+	hooks := &server.Hooks{}
+	if options != nil && options.Hooks != nil {
+		hooks = options.Hooks
 	}
+	server.WithHooks(hooks)(mcpServer)
 
-	// Set project ID if provided
-	if projectID != nil {
-		mcpcat.ProjectID = *projectID
-	}
+	return trackInternal(mcpServer, hooks, projectID, options)
+}
 
-	// Override with user options if provided
+func trackInternal(mcpServer *server.MCPServer, hooks *server.Hooks, projectID string, options *Options) error {
+	opts := DefaultOptions()
 	if options != nil {
-		mcpcat.Options = *options
+		opts = *options
 	}
 
-	// Register in global map via internal registry
+	instance := &MCPcat{
+		ProjectID: projectID,
+		Options:   opts,
+		serverRef: mcpServer,
+	}
+
 	registryInstance := &core.MCPcatInstance{
-		ProjectID: mcpcat.ProjectID,
-		Options:   &mcpcat.Options,
+		ProjectID: projectID,
+		Options:   &instance.Options,
 		ServerRef: mcpServer,
 	}
 	registry.Register(mcpServer, registryInstance)
 
-	// Configure logging based on debug setting
-	logging.SetGlobalDebug(mcpcat.Options.Debug)
-
-	// Initialize logging
+	logging.SetGlobalDebug(opts.Debug)
 	logger := logging.New()
 	logger.Info("Initializing MCPCat tracking")
 
-	// Add tracking hooks - no server parameter needed!
-	tracking.AddTracingToHooks(hooks, mcpcat.Options.RedactSensitiveInformation)
+	tracking.AddTracingToHooks(hooks, opts.RedactSensitiveInformation)
+	tracking.RegisterGetMoreToolsIfEnabled(mcpServer, &instance.Options)
 
-	// Register get_more_tools tool if enabled
-	if srv, ok := mcpServer.(*server.MCPServer); ok {
-		tracking.RegisterGetMoreToolsIfEnabled(srv, &mcpcat.Options)
-	}
-
-	// TODO: Setup exporters if configured
-	// Initialize exporters from mcpcat.Options.Exporters
-
-	return mcpcat, nil
+	return nil
 }
 
 // GetMCPcat retrieves the MCPcat instance for a given server

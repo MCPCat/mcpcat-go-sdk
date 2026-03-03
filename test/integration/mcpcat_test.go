@@ -47,14 +47,13 @@ func (s *EventSpy) Clear() {
 
 // TestBasicSetup tests that mcpcat can be set up without errors
 func TestBasicSetup(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, _ := CreateTodoServer(hooks)
+	mcpServer, _ := CreateTodoServerSimple()
 
 	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false // Disable debug logging for tests
+	opts := mcpcat.DefaultOptions()
+	opts.Debug = false
 
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	err := mcpcat.Track(mcpServer, projectID, &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -75,10 +74,10 @@ func TestBasicSetup(t *testing.T) {
 
 // TestToolCallTracking tests that tool calls are tracked correctly
 func TestToolCallTracking(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, store := CreateTodoServer(hooks)
+	mcpServer, store := CreateTodoServerSimple()
 
-	// Track hook invocations
+	// Track hook invocations via shared hooks
+	hooks := &server.Hooks{}
 	var beforeCallCount, afterCallCount int
 	var mu sync.Mutex
 
@@ -88,17 +87,14 @@ func TestToolCallTracking(t *testing.T) {
 		beforeCallCount++
 	})
 
-	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) {
+	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result any) {
 		mu.Lock()
 		defer mu.Unlock()
 		afterCallCount++
 	})
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
-
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	opts := mcpcat.Options{Debug: false, Hooks: hooks}
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -165,13 +161,13 @@ func TestToolCallTracking(t *testing.T) {
 
 // TestSessionTracking tests that session information is captured
 func TestSessionTracking(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, _ := CreateTodoServer(hooks)
+	mcpServer, _ := CreateTodoServerSimple()
 
 	var capturedSession *mcpcat.Session
 	var mu sync.Mutex
 
-	// Capture session info via success hook
+	// Capture session info via shared hooks
+	hooks := &server.Hooks{}
 	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -179,11 +175,8 @@ func TestSessionTracking(t *testing.T) {
 		// For this test, we just verify the hook is called
 	})
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
-
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	opts := mcpcat.Options{Debug: false, Hooks: hooks}
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -227,16 +220,14 @@ func TestSessionTracking(t *testing.T) {
 
 // TestUserIdentity tests that custom identify function is called
 func TestUserIdentity(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, _ := CreateTodoServer(hooks)
+	mcpServer, _ := CreateTodoServerSimple()
 
 	var identifyCalled bool
 	var mu sync.Mutex
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
-	options.Identify = func(ctx context.Context, request any) *mcpcat.UserIdentity {
+	opts := mcpcat.DefaultOptions()
+	opts.Debug = false
+	opts.Identify = func(ctx context.Context, request any) *mcpcat.UserIdentity {
 		mu.Lock()
 		defer mu.Unlock()
 		identifyCalled = true
@@ -249,7 +240,7 @@ func TestUserIdentity(t *testing.T) {
 		}
 	}
 
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -299,16 +290,14 @@ func TestUserIdentity(t *testing.T) {
 
 // TestRedaction tests that sensitive data redaction works
 func TestRedaction(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, _ := CreateTodoServer(hooks)
+	mcpServer, _ := CreateTodoServerSimple()
 
 	var redactCalled bool
 	var mu sync.Mutex
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
-	options.RedactSensitiveInformation = func(text string) string {
+	opts := mcpcat.DefaultOptions()
+	opts.Debug = false
+	opts.RedactSensitiveInformation = func(text string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		redactCalled = true
@@ -324,7 +313,7 @@ func TestRedaction(t *testing.T) {
 		return text
 	}
 
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -375,23 +364,21 @@ func TestRedaction(t *testing.T) {
 
 // TestErrorHandling tests that errors are tracked correctly
 func TestErrorHandling(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, _ := CreateTodoServer(hooks)
+	mcpServer, _ := CreateTodoServerSimple()
 
 	var errorCaptured bool
 	var mu sync.Mutex
 
+	// Share hooks between user code and MCPCat
+	hooks := &server.Hooks{}
 	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 		mu.Lock()
 		defer mu.Unlock()
 		errorCaptured = true
 	})
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
-
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	opts := mcpcat.Options{Debug: false, Hooks: hooks}
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -453,14 +440,10 @@ func TestErrorHandling(t *testing.T) {
 
 // TestEndToEnd tests a complete workflow with multiple operations
 func TestEndToEnd(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, store := CreateTodoServer(hooks)
+	mcpServer, store := CreateTodoServerSimple()
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
-
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	opts := mcpcat.Options{Debug: false}
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}
@@ -572,16 +555,122 @@ func TestEndToEnd(t *testing.T) {
 	}
 }
 
+// TestTrack_SimpleSetup tests Track with minimal arguments
+func TestTrack_SimpleSetup(t *testing.T) {
+	mcpServer := server.NewMCPServer("test-server", "1.0.0", server.WithToolCapabilities(true))
+
+	err := mcpcat.Track(mcpServer, "test_project_id", nil)
+	if err != nil {
+		t.Fatalf("Track failed: %v", err)
+	}
+	defer mcpcat.UnregisterServer(mcpServer)
+
+	instance := mcpcat.GetMCPcat(mcpServer)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance")
+	}
+	if instance.ProjectID != "test_project_id" {
+		t.Errorf("Expected project ID 'test_project_id', got '%s'", instance.ProjectID)
+	}
+}
+
+// TestTrack_WithOptions tests Track with custom options
+func TestTrack_WithOptions(t *testing.T) {
+	mcpServer := server.NewMCPServer("test-server", "1.0.0", server.WithToolCapabilities(true))
+
+	opts := &mcpcat.Options{
+		Debug:                true,
+		EnableReportMissing:  false,
+		EnableToolCallContext: true,
+	}
+	err := mcpcat.Track(mcpServer, "test_project_id", opts)
+	if err != nil {
+		t.Fatalf("Track failed: %v", err)
+	}
+	defer mcpcat.UnregisterServer(mcpServer)
+
+	instance := mcpcat.GetMCPcat(mcpServer)
+	if instance.Options.EnableReportMissing != false {
+		t.Error("Expected EnableReportMissing=false")
+	}
+}
+
+// TestTrack_EmptyProjectID tests Track with empty project ID
+func TestTrack_EmptyProjectID(t *testing.T) {
+	mcpServer := server.NewMCPServer("test-server", "1.0.0")
+	err := mcpcat.Track(mcpServer, "", nil)
+	if err == nil {
+		t.Fatal("Expected error for empty project ID")
+	}
+}
+
+// TestTrack_NilServer tests Track with nil server
+func TestTrack_NilServer(t *testing.T) {
+	err := mcpcat.Track(nil, "proj_id", nil)
+	if err == nil {
+		t.Fatal("Expected error for nil server")
+	}
+}
+
+// TestTrack_HooksFireOnToolCall is an end-to-end test proving hooks fire via Track()
+func TestTrack_HooksFireOnToolCall(t *testing.T) {
+	mcpServer := server.NewMCPServer("test-server", "1.0.0", server.WithToolCapabilities(true))
+	tool := mcp.NewTool("greet", mcp.WithDescription("Greet"),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Name")))
+	mcpServer.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		name, _ := req.RequireString("name")
+		return mcp.NewToolResultText("Hello, " + name), nil
+	})
+
+	opts := mcpcat.Options{EnableReportMissing: false, EnableToolCallContext: false}
+	err := mcpcat.Track(mcpServer, "test_proj", &opts)
+	if err != nil {
+		t.Fatalf("Track failed: %v", err)
+	}
+	defer mcpcat.UnregisterServer(mcpServer)
+
+	mcpClient, err := client.NewInProcessClient(mcpServer)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer mcpClient.Close()
+
+	ctx := context.Background()
+	if err := mcpClient.Start(ctx); err != nil {
+		t.Fatalf("Failed to start client: %v", err)
+	}
+
+	initReq := mcp.InitializeRequest{}
+	initReq.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
+	initReq.Params.ClientInfo = mcp.Implementation{Name: "test", Version: "1.0"}
+	_, err = mcpClient.Initialize(ctx, initReq)
+	if err != nil {
+		t.Fatalf("Failed to initialize: %v", err)
+	}
+
+	callReq := mcp.CallToolRequest{}
+	callReq.Params.Name = "greet"
+	callReq.Params.Arguments = map[string]any{"name": "World"}
+	result, err := mcpClient.CallTool(ctx, callReq)
+	if err != nil {
+		t.Fatalf("CallTool failed: %v", err)
+	}
+
+	if tc, ok := result.Content[0].(mcp.TextContent); ok {
+		if tc.Text != "Hello, World" {
+			t.Errorf("Expected 'Hello, World', got '%s'", tc.Text)
+		}
+	}
+}
+
 // TestListTools verifies that tools are properly registered
 func TestListTools(t *testing.T) {
-	hooks := &server.Hooks{}
-	mcpServer, _ := CreateTodoServer(hooks)
+	mcpServer, _ := CreateTodoServerSimple()
 
-	projectID := "test_project_id"
-	options := mcpcat.DefaultOptions()
-	options.Debug = false
+	opts := mcpcat.DefaultOptions()
+	opts.Debug = false
 
-	_, err := mcpcat.SetupTracking(mcpServer, hooks, &projectID, &options)
+	err := mcpcat.Track(mcpServer, "test_project_id", &opts)
 	if err != nil {
 		t.Fatalf("Failed to setup tracking: %v", err)
 	}

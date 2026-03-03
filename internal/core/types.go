@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/mark3labs/mcp-go/server"
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
 )
 
@@ -40,6 +41,11 @@ type ExporterConfig struct {
 
 // Options configures the MCPCat tracking behavior.
 type Options struct {
+	// Hooks provides pre-existing server hooks to append MCPCat's hooks to.
+	// If nil, MCPCat creates and applies new hooks automatically.
+	// Use this when your server already has hooks configured.
+	Hooks *server.Hooks
+
 	// EnableReportMissing adds a "get_more_tools" tool that allows LLMs to
 	// automatically report missing functionality.
 	EnableReportMissing bool
@@ -201,6 +207,7 @@ type MCPcatInstance struct {
 // DefaultOptions returns the default options for tracking.
 func DefaultOptions() Options {
 	return Options{
+		Hooks:                      nil,
 		EnableReportMissing:        true,
 		EnableToolCallContext:      true,
 		Debug:                      false,

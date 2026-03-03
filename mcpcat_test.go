@@ -3,6 +3,7 @@ package mcpcat
 import (
 	"testing"
 
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/registry"
 )
 
@@ -14,20 +15,72 @@ func TestTrack_NilServer(t *testing.T) {
 }
 
 func TestTrack_EmptyProjectID(t *testing.T) {
-	// Can't easily create a real *server.MCPServer in internal tests
-	// without importing mcp-go, so just test nil + empty project
-	err := Track(nil, "", nil)
+	s := server.NewMCPServer("test", "1.0.0")
+	err := Track(s, "", nil)
 	if err == nil {
-		t.Error("Expected error for nil server or empty project ID")
+		t.Error("Expected error for empty project ID")
 	}
 }
 
-func TestTrack_WithHooksOption(t *testing.T) {
-	// Verify that passing Hooks via Options doesn't error
-	// (can't create a real server here without full mcp-go setup)
-	err := Track(nil, "proj_id", &Options{Hooks: nil})
-	if err == nil {
-		t.Error("Expected error for nil server even with options")
+func TestTrack_NilOptions(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	err := Track(s, "proj_test", nil)
+	if err != nil {
+		t.Fatalf("Track with nil options failed: %v", err)
+	}
+	defer UnregisterServer(s)
+
+	instance := GetMCPcat(s)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance after Track")
+	}
+	if instance.ProjectID != "proj_test" {
+		t.Errorf("Expected project ID 'proj_test', got '%s'", instance.ProjectID)
+	}
+	if !instance.Options.EnableReportMissing {
+		t.Error("Expected EnableReportMissing default true")
+	}
+	if !instance.Options.EnableToolCallContext {
+		t.Error("Expected EnableToolCallContext default true")
+	}
+}
+
+func TestTrack_WithOptions(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	opts := &Options{
+		Debug:               true,
+		EnableReportMissing: false,
+	}
+	err := Track(s, "proj_custom", opts)
+	if err != nil {
+		t.Fatalf("Track with options failed: %v", err)
+	}
+	defer UnregisterServer(s)
+
+	instance := GetMCPcat(s)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance")
+	}
+	if instance.Options.EnableReportMissing {
+		t.Error("Expected EnableReportMissing=false")
+	}
+}
+
+func TestTrack_WithExistingHooks(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	hooks := &server.Hooks{}
+	err := Track(s, "proj_hooks", &Options{Hooks: hooks})
+	if err != nil {
+		t.Fatalf("Track with hooks failed: %v", err)
+	}
+	defer UnregisterServer(s)
+
+	instance := GetMCPcat(s)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance")
+	}
+	if instance.ProjectID != "proj_hooks" {
+		t.Errorf("Expected project ID 'proj_hooks', got '%s'", instance.ProjectID)
 	}
 }
 

@@ -99,16 +99,84 @@ func (s *TodoStore) Delete(id string) error {
 	return nil
 }
 
-// CreateTodoServer creates an MCP server with todo app tools
-func CreateTodoServer(hooks *server.Hooks) (*server.MCPServer, *TodoStore) {
+// CreateTodoServerSimple creates an MCP server with todo app tools without hooks
+func CreateTodoServerSimple() (*server.MCPServer, *TodoStore) {
 	mcpServer := server.NewMCPServer(
 		"todo-server",
 		"1.0.0",
 		server.WithToolCapabilities(true),
-		server.WithHooks(hooks),
 	)
 
 	store := NewTodoStore()
+	registerTodoTools(mcpServer, store)
+	return mcpServer, store
+}
+
+// CreateFullServer creates an MCP server with tools, resources, and prompts.
+// This provides the full MCP surface area for integration testing.
+func CreateFullServer() (*server.MCPServer, *TodoStore) {
+	mcpServer := server.NewMCPServer(
+		"todo-server",
+		"1.0.0",
+		server.WithToolCapabilities(true),
+		server.WithResourceCapabilities(true, false),
+		server.WithPromptCapabilities(true),
+	)
+
+	store := NewTodoStore()
+	registerTodoTools(mcpServer, store)
+
+	// Register the "about" resource
+	aboutResource := mcp.NewResource(
+		"todo://about",
+		"about",
+		mcp.WithResourceDescription("About this todo server"),
+		mcp.WithMIMEType("text/plain"),
+	)
+	mcpServer.AddResource(aboutResource, func(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+		return []mcp.ResourceContents{
+			mcp.TextResourceContents{
+				URI:      "todo://about",
+				MIMEType: "text/plain",
+				Text:     "This is a simple todo server for integration testing.",
+			},
+		}, nil
+	})
+
+	// Register the "summarize_todos" prompt
+	summarizePrompt := mcp.NewPrompt(
+		"summarize_todos",
+		mcp.WithPromptDescription("Summarize all current todos"),
+		mcp.WithArgument("style", mcp.ArgumentDescription("The summary style, e.g. brief or detailed")),
+	)
+	mcpServer.AddPrompt(summarizePrompt, func(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		style := request.Params.Arguments["style"]
+		if style == "" {
+			style = "brief"
+		}
+
+		todos := store.List()
+		summary := fmt.Sprintf("Summarize the following %d todos in a %s style:\n", len(todos), style)
+		for _, todo := range todos {
+			status := "incomplete"
+			if todo.Completed {
+				status = "complete"
+			}
+			summary += fmt.Sprintf("- %s (%s): %s\n", todo.Title, status, todo.Description)
+		}
+
+		return &mcp.GetPromptResult{
+			Description: "Summary of all todos",
+			Messages: []mcp.PromptMessage{
+				mcp.NewPromptMessage(mcp.RoleUser, mcp.NewTextContent(summary)),
+			},
+		}, nil
+	})
+
+	return mcpServer, store
+}
+
+func registerTodoTools(mcpServer *server.MCPServer, store *TodoStore) {
 
 	// Add todo tool
 	addTodoTool := mcp.NewTool(
@@ -233,6 +301,4 @@ func CreateTodoServer(hooks *server.Hooks) (*server.MCPServer, *TodoStore) {
 
 		return mcp.NewToolResultText(fmt.Sprintf("Deleted todo: %s", id)), nil
 	})
-
-	return mcpServer, store
 }

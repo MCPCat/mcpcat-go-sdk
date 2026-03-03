@@ -19,7 +19,7 @@ The publisher uses the default MCPCat API at `https://api.mcpcat.io`. No configu
 
 ## Usage
 
-The publisher is automatically initialized when you call `mcpcat.SetupTracking()`. Events are published asynchronously whenever tool calls complete.
+The publisher is automatically initialized when you call `mcpcat.Track()`. Events are published asynchronously whenever tool calls complete.
 
 ### Automatic Shutdown
 
@@ -28,7 +28,7 @@ The publisher **automatically handles graceful shutdown** when your application 
 ```go
 func main() {
     // Setup tracking
-    mcpcat.SetupTracking(server, hooks, projectID, options)
+    mcpcat.Track(s, "proj_YOUR_PROJECT_ID", nil)
 
     // Start server - automatic shutdown on Ctrl+C!
     server.ServeStdio(s)
@@ -48,7 +48,7 @@ While automatic shutdown handles most cases, adding `defer mcpcat.Shutdown()` is
 func main() {
     defer mcpcat.Shutdown() // Recommended: handles os.Exit(), panic, etc.
 
-    mcpcat.SetupTracking(server, hooks, projectID, options)
+    mcpcat.Track(s, "proj_YOUR_PROJECT_ID", nil)
     server.ServeStdio(s)
 }
 ```
@@ -67,10 +67,10 @@ func main() {
     defer mcpcat.Shutdown() // Single shutdown call for all servers
 
     // Server 1
-    mcpcat.SetupTracking(server1, hooks1, projectID1, options)
+    mcpcat.Track(server1, "proj_ID_1", nil)
 
     // Server 2 - shares the same publisher!
-    mcpcat.SetupTracking(server2, hooks2, projectID2, options)
+    mcpcat.Track(server2, "proj_ID_2", nil)
 
     // Both publish to the same queue
     http.ListenAndServe(":8080", nil)

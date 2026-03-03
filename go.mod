@@ -1,9 +1,11 @@
 module github.com/mcpcat/mcpcat-go-sdk
 
-go 1.23
+go 1.23.0
+
+toolchain go1.24.4
 
 require (
-	github.com/mark3labs/mcp-go v0.41.1
+	github.com/mark3labs/mcp-go v0.44.1
 	github.com/mcpcat/mcpcat-go-api v0.1.7
 	github.com/segmentio/ksuid v1.0.4
 )

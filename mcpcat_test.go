@@ -3,67 +3,89 @@ package mcpcat
 import (
 	"testing"
 
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/registry"
 )
 
-// Mock server types for testing
-type unsupportedServer struct{}
-
-func TestSetupTracking_NilServer(t *testing.T) {
-	_, err := SetupTracking(nil, nil, nil, nil)
+func TestTrack_NilServer(t *testing.T) {
+	err := Track(nil, "proj_id", nil)
 	if err == nil {
-		t.Error("Expected error when setting up tracking with nil server")
-	}
-
-	expectedSubstring := "unsupported server type 'unknown'"
-	if !contains(err.Error(), expectedSubstring) {
-		t.Errorf("Expected error to contain '%s', got: %v", expectedSubstring, err)
+		t.Error("Expected error when tracking with nil server")
 	}
 }
 
-// Helper function to check if string contains substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && stringContains(s, substr))
-}
-
-func stringContains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-func TestSetupTracking_UnsupportedServerType(t *testing.T) {
-	mockServer := &unsupportedServer{}
-	_, err := SetupTracking(mockServer, nil, nil, nil)
-
+func TestTrack_EmptyProjectID(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	err := Track(s, "", nil)
 	if err == nil {
-		t.Error("Expected error when setting up tracking with unsupported server type")
-	}
-
-	expectedSubstring := "unsupported server type 'unknown'"
-	if !contains(err.Error(), expectedSubstring) {
-		t.Errorf("Expected error to contain '%s', got: %v", expectedSubstring, err)
+		t.Error("Expected error for empty project ID")
 	}
 }
 
-func TestSetupTracking_WithStringType(t *testing.T) {
-	_, err := SetupTracking("not a server", nil, nil, nil)
-
-	if err == nil {
-		t.Error("Expected error when setting up tracking with string type")
+func TestTrack_NilOptions(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	err := Track(s, "proj_test", nil)
+	if err != nil {
+		t.Fatalf("Track with nil options failed: %v", err)
 	}
+	defer UnregisterServer(s)
 
-	expectedSubstring := "unsupported server type 'unknown'"
-	if !contains(err.Error(), expectedSubstring) {
-		t.Errorf("Expected error to contain '%s', got: %v", expectedSubstring, err)
+	instance := GetMCPcat(s)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance after Track")
+	}
+	if instance.ProjectID != "proj_test" {
+		t.Errorf("Expected project ID 'proj_test', got '%s'", instance.ProjectID)
+	}
+	if !instance.Options.EnableReportMissing {
+		t.Error("Expected EnableReportMissing default true")
+	}
+	if !instance.Options.EnableToolCallContext {
+		t.Error("Expected EnableToolCallContext default true")
+	}
+}
+
+func TestTrack_WithOptions(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	opts := &Options{
+		Debug:               true,
+		EnableReportMissing: false,
+	}
+	err := Track(s, "proj_custom", opts)
+	if err != nil {
+		t.Fatalf("Track with options failed: %v", err)
+	}
+	defer UnregisterServer(s)
+
+	instance := GetMCPcat(s)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance")
+	}
+	if instance.Options.EnableReportMissing {
+		t.Error("Expected EnableReportMissing=false")
+	}
+}
+
+func TestTrack_WithExistingHooks(t *testing.T) {
+	s := server.NewMCPServer("test", "1.0.0")
+	hooks := &server.Hooks{}
+	err := Track(s, "proj_hooks", &Options{Hooks: hooks})
+	if err != nil {
+		t.Fatalf("Track with hooks failed: %v", err)
+	}
+	defer UnregisterServer(s)
+
+	instance := GetMCPcat(s)
+	if instance == nil {
+		t.Fatal("Expected MCPcat instance")
+	}
+	if instance.ProjectID != "proj_hooks" {
+		t.Errorf("Expected project ID 'proj_hooks', got '%s'", instance.ProjectID)
 	}
 }
 
 func TestGetMCPcat_NotRegistered(t *testing.T) {
-	mockServer := &unsupportedServer{}
+	mockServer := &struct{ id string }{id: "test"}
 	result := GetMCPcat(mockServer)
 
 	if result != nil {
@@ -80,8 +102,7 @@ func TestGetMCPcat_NilServer(t *testing.T) {
 }
 
 func TestUnregisterServer(t *testing.T) {
-	// Test that UnregisterServer doesn't panic
-	mockServer := &unsupportedServer{}
+	mockServer := &struct{ id string }{id: "test-server"}
 
 	// This should not panic even if server is not registered
 	UnregisterServer(mockServer)
@@ -99,8 +120,6 @@ func TestUnregisterServer_NilServer(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	// Test that Shutdown doesn't panic
-	// This is a basic smoke test
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("Shutdown panicked: %v", r)
@@ -111,7 +130,6 @@ func TestShutdown(t *testing.T) {
 }
 
 func TestShutdown_MultipleCalls(t *testing.T) {
-	// Test that calling Shutdown multiple times doesn't panic
 	defer func() {
 		if r := recover(); r != nil {
 			t.Errorf("Multiple Shutdown calls panicked: %v", r)
@@ -124,7 +142,6 @@ func TestShutdown_MultipleCalls(t *testing.T) {
 }
 
 func TestMCPcat_Struct(t *testing.T) {
-	// Test that MCPcat struct can be created
 	mcpcat := &MCPcat{
 		ProjectID: "proj_test",
 		Options:   DefaultOptions(),
@@ -145,25 +162,21 @@ func TestMCPcat_Struct(t *testing.T) {
 }
 
 func TestGetMCPcat_AfterManualRegistration(t *testing.T) {
-	// Manually register a server to test GetMCPcat retrieval
 	mockServer := &struct{ id string }{id: "test-server"}
 	projectID := "proj_manual_test"
 	opts := DefaultOptions()
 
 	instance := registry.Get(mockServer)
 	if instance != nil {
-		// Clean up if somehow already registered
 		registry.Unregister(mockServer)
 	}
 
-	// Manually register
 	registry.Register(mockServer, &MCPcatInstance{
 		ProjectID: projectID,
 		Options:   &opts,
 		ServerRef: mockServer,
 	})
 
-	// Retrieve and verify
 	result := GetMCPcat(mockServer)
 	if result == nil {
 		t.Fatal("Expected non-nil MCPcat after manual registration")
@@ -177,27 +190,22 @@ func TestGetMCPcat_AfterManualRegistration(t *testing.T) {
 		t.Error("Expected EnableReportMissing to be true")
 	}
 
-	// Clean up
 	registry.Unregister(mockServer)
 }
 
 func TestGetMCPcat_WithNilOptions(t *testing.T) {
-	// Test GetMCPcat when registry instance has nil options
 	mockServer := &struct{ id string }{id: "test-server-nil-opts"}
 
-	// Manually register with nil options
 	registry.Register(mockServer, &MCPcatInstance{
 		ProjectID: "proj_test",
-		Options:   nil, // nil options
+		Options:   nil,
 		ServerRef: mockServer,
 	})
 
-	// Should return nil because options are required
 	result := GetMCPcat(mockServer)
 	if result != nil {
 		t.Error("Expected nil when registry instance has nil options")
 	}
 
-	// Clean up
 	registry.Unregister(mockServer)
 }

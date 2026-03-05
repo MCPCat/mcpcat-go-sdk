@@ -3,8 +3,8 @@ package officialsdk
 import (
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpcat "github.com/mcpcat/mcpcat-go-sdk"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestGetOrCreateSession_NilRequest(t *testing.T) {

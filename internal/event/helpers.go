@@ -122,7 +122,6 @@ func CreateIdentifyEvent(session *core.Session) *Event {
 	return event
 }
 
-
 // LogEvent logs an event in a formatted, human-readable way for debugging.
 func LogEvent(logger interface{ Infof(string, ...any) }, evt *Event, title string) {
 	if evt == nil {

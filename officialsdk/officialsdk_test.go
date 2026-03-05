@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpcat "github.com/mcpcat/mcpcat-go-sdk"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestTrack_NilServer(t *testing.T) {

@@ -2,11 +2,7 @@ package publisher
 
 import (
 	"context"
-	"os"
-	"os/signal"
 	"sync"
-	"sync/atomic"
-	"syscall"
 	"time"
 
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
@@ -15,18 +11,40 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk/internal/redaction"
 )
 
+// Global singleton publisher
+var (
+	globalPub     *Publisher
+	globalPubOnce sync.Once
+)
+
+// GetOrInit returns the global publisher, creating it on first call.
+func GetOrInit(redactFn core.RedactFunc) *Publisher {
+	globalPubOnce.Do(func() {
+		globalPub = New(redactFn)
+	})
+	return globalPub
+}
+
+// ShutdownGlobal shuts down the global publisher if it has been initialized.
+// It passes the provided context through to control the shutdown deadline.
+func ShutdownGlobal(ctx context.Context) error {
+	if globalPub != nil {
+		return globalPub.Shutdown(ctx)
+	}
+	return nil
+}
+
 // Publisher handles asynchronous event publishing to the MCPCat API
 type Publisher struct {
-	queue         chan *core.Event
-	apiClient     *mcpcatapi.APIClient
-	logger        *logging.Logger
-	redactFn      core.RedactFunc
-	wg            sync.WaitGroup
-	ctx           context.Context
-	cancel        context.CancelFunc
-	shutdownCh    chan struct{}
-	shutdownOnce  sync.Once
-	signalHandler atomic.Bool
+	queue        chan *core.Event
+	apiClient    *mcpcatapi.APIClient
+	logger       *logging.Logger
+	redactFn     core.RedactFunc
+	wg           sync.WaitGroup
+	ctx          context.Context
+	cancel       context.CancelFunc
+	shutdownCh   chan struct{}
+	shutdownOnce sync.Once
 }
 
 // New creates a new Publisher instance and starts worker goroutines
@@ -62,35 +80,9 @@ func New(redactFn core.RedactFunc) *Publisher {
 		go p.worker(i)
 	}
 
-	// Start automatic signal handler for graceful shutdown
-	go p.handleSignals()
-
 	logger.Infof("Publisher started with %d workers and queue size %d", MaxWorkers, QueueSize)
 
 	return p
-}
-
-// handleSignals listens for OS signals and triggers graceful shutdown
-func (p *Publisher) handleSignals() {
-	if !p.signalHandler.CompareAndSwap(false, true) {
-		// Signal handler already running
-		return
-	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case sig := <-sigChan:
-		p.logger.Infof("Received signal %v, draining event queue...", sig)
-		p.Shutdown()
-		// Give logger time to flush before exiting
-		time.Sleep(100 * time.Millisecond)
-		os.Exit(0)
-	case <-p.shutdownCh:
-		// Publisher already shut down manually
-		return
-	}
 }
 
 // worker processes events from the queue and publishes them to the API
@@ -102,8 +94,18 @@ func (p *Publisher) worker(id int) {
 	for {
 		select {
 		case <-p.ctx.Done():
-			p.logger.Debugf("Worker %d shutting down", id)
-			return
+			// Drain remaining events before exiting
+			p.logger.Debugf("Worker %d shutting down, draining remaining events", id)
+			for {
+				select {
+				case event := <-p.queue:
+					if event != nil {
+						p.publishEvent(event, id)
+					}
+				default:
+					return
+				}
+			}
 		case event := <-p.queue:
 			if event == nil {
 				continue
@@ -168,8 +170,12 @@ func (p *Publisher) Publish(event *core.Event) {
 	}
 }
 
-// Shutdown gracefully shuts down the publisher, waiting up to 5 seconds for queued events to be published
-func (p *Publisher) Shutdown() {
+// Shutdown gracefully shuts down the publisher, waiting for queued events to be
+// published until the provided context is done. If ctx has no deadline, a
+// default 5-second timeout is applied. Returns an error if the context expires
+// before all workers finish.
+func (p *Publisher) Shutdown(ctx context.Context) error {
+	var shutdownErr error
 	p.shutdownOnce.Do(func() {
 		queuedCount := len(p.queue)
 		if queuedCount > 0 {
@@ -178,10 +184,17 @@ func (p *Publisher) Shutdown() {
 			p.logger.Info("Publisher shutting down...")
 		}
 
-		// Stop accepting new events by canceling context
+		// If the caller did not set a deadline, apply a default 5-second timeout.
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+		}
+
+		// Stop accepting new events by canceling the internal context.
 		p.cancel()
 
-		// Wait for workers to finish or timeout after 5 seconds
+		// Wait for workers to finish or the context to expire.
 		done := make(chan struct{})
 		go func() {
 			p.wg.Wait()
@@ -196,11 +209,13 @@ func (p *Publisher) Shutdown() {
 			} else {
 				p.logger.Info("All events published successfully")
 			}
-		case <-time.After(5 * time.Second):
+		case <-ctx.Done():
 			remaining := len(p.queue)
 			p.logger.Warnf("Shutdown timeout reached, %d events may not have been published", remaining)
+			shutdownErr = ctx.Err()
 		}
 
 		close(p.shutdownCh)
 	})
+	return shutdownErr
 }

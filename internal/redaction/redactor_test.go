@@ -271,6 +271,46 @@ func TestRedactEvent(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "redacts Error field strings",
+			event: &core.Event{
+				PublishEventRequest: mcpcatapi.PublishEventRequest{
+					Error: map[string]any{
+						"message":  "connection to db://secret:pass@host failed",
+						"type":     "*url.Error",
+						"platform": "go",
+						"stack":    "goroutine 1 [running]:\nmain.main()\n\t/app/main.go:10",
+					},
+				},
+			},
+			redactFn: func(s string) string { return "[REDACTED]" },
+			want: &core.Event{
+				PublishEventRequest: mcpcatapi.PublishEventRequest{
+					Error: map[string]any{
+						"message":  "[REDACTED]",
+						"type":     "[REDACTED]",
+						"platform": "[REDACTED]",
+						"stack":    "[REDACTED]",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "nil Error map remains nil",
+			event: &core.Event{
+				PublishEventRequest: mcpcatapi.PublishEventRequest{
+					Error: nil,
+				},
+			},
+			redactFn: func(s string) string { return "REDACTED" },
+			want: &core.Event{
+				PublishEventRequest: mcpcatapi.PublishEventRequest{
+					Error: nil,
+				},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -307,6 +347,11 @@ func TestRedactEvent(t *testing.T) {
 			// Compare UserIntent
 			if !strPtrEqual(tt.event.UserIntent, tt.want.UserIntent) {
 				t.Errorf("UserIntent mismatch:\ngot:  %v\nwant: %v", ptrVal(tt.event.UserIntent), ptrVal(tt.want.UserIntent))
+			}
+
+			// Compare Error
+			if !mapsEqual(tt.event.Error, tt.want.Error) {
+				t.Errorf("Error mismatch:\ngot:  %+v\nwant: %+v", tt.event.Error, tt.want.Error)
 			}
 		})
 	}

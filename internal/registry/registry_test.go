@@ -351,10 +351,7 @@ func TestRegistryLifecycle(t *testing.T) {
 	server := &mockServer{name: "lifecycle"}
 	instance := &core.MCPcatInstance{
 		ProjectID: "lifecycle-proj",
-		Options: &core.Options{
-			EnableReportMissing:   true,
-			EnableToolCallContext: true,
-		},
+		Options:   &core.Options{},
 	}
 
 	// Step 1: Initially not registered

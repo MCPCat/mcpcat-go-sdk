@@ -5,7 +5,6 @@ import "github.com/mcpcat/mcpcat-go-sdk/internal/core"
 type (
 	UserIdentity   = core.UserIdentity
 	Options        = core.Options
-	IdentifyFunc   = core.IdentifyFunc
 	RedactFunc     = core.RedactFunc
 	Exporter       = core.Exporter
 	ExporterConfig = core.ExporterConfig

@@ -10,20 +10,16 @@ import (
 func TestDefaultOptions(t *testing.T) {
 	opts := DefaultOptions()
 
-	if !opts.EnableReportMissing {
-		t.Error("Expected EnableReportMissing to be true by default")
+	if opts.DisableReportMissing {
+		t.Error("Expected DisableReportMissing to be false by default")
 	}
 
-	if !opts.EnableToolCallContext {
-		t.Error("Expected EnableToolCallContext to be true by default")
+	if opts.DisableToolCallContext {
+		t.Error("Expected DisableToolCallContext to be false by default")
 	}
 
 	if opts.Debug {
 		t.Error("Expected Debug to be false by default")
-	}
-
-	if opts.Identify != nil {
-		t.Error("Expected Identify to be nil by default")
 	}
 
 	if opts.RedactSensitiveInformation != nil {

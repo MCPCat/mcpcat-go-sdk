@@ -23,6 +23,12 @@ coverage.xml
 mcpcat-go-sdk
 mcpcat
 
+# Example compiled binaries
+examples/mcpgo/basic/basic
+examples/mcpgo/advanced/advanced
+examples/officialsdk/basic/basic
+examples/officialsdk/advanced/advanced
+
 # Dependency directories
 # vendor/
 

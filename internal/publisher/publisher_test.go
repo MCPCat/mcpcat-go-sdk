@@ -1,12 +1,15 @@
 package publisher
 
 import (
+	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
+	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 )
 
 // Helper function to create string pointers
@@ -17,7 +20,7 @@ func strPtr(s string) *string {
 func TestNew(t *testing.T) {
 	t.Run("creates publisher with default configuration", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		if p == nil {
 			t.Fatal("New() returned nil")
@@ -55,7 +58,7 @@ func TestNew(t *testing.T) {
 	t.Run("creates publisher with redact function", func(t *testing.T) {
 		redactFn := func(s string) string { return "***" }
 		p := New(redactFn)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		if p.redactFn == nil {
 			t.Error("redactFn not set")
@@ -64,7 +67,7 @@ func TestNew(t *testing.T) {
 
 	t.Run("starts workers", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		// Give workers time to start
 		time.Sleep(50 * time.Millisecond)
@@ -89,7 +92,7 @@ func TestNew(t *testing.T) {
 func TestPublish(t *testing.T) {
 	t.Run("successfully enqueues event", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		event := &core.Event{
 			PublishEventRequest: mcpcatapi.PublishEventRequest{
@@ -111,7 +114,7 @@ func TestPublish(t *testing.T) {
 
 	t.Run("handles nil event gracefully", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		// Should not panic
 		p.Publish(nil)
@@ -125,7 +128,7 @@ func TestPublish(t *testing.T) {
 
 	t.Run("drops events when queue is full", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		// Cancel context to prevent workers from processing
 		p.cancel()
@@ -166,7 +169,7 @@ func TestPublish(t *testing.T) {
 
 	t.Run("handles concurrent publishing", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		var wg sync.WaitGroup
 		numGoroutines := 10
@@ -200,7 +203,7 @@ func TestPublish(t *testing.T) {
 func TestPublishEvent(t *testing.T) {
 	t.Run("does not panic on publish", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		event := &core.Event{
 			PublishEventRequest: mcpcatapi.PublishEventRequest{
@@ -219,7 +222,7 @@ func TestPublishEvent(t *testing.T) {
 			}
 			return s
 		})
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		event := &core.Event{
 			PublishEventRequest: mcpcatapi.PublishEventRequest{
@@ -242,7 +245,7 @@ func TestPublishEvent(t *testing.T) {
 		p := New(func(s string) string {
 			panic("redaction panic")
 		})
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		event := &core.Event{
 			PublishEventRequest: mcpcatapi.PublishEventRequest{
@@ -270,7 +273,7 @@ func TestPublishEvent(t *testing.T) {
 
 	t.Run("handles API errors without panicking", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		event := &core.Event{
 			PublishEventRequest: mcpcatapi.PublishEventRequest{
@@ -290,7 +293,7 @@ func TestPublishEvent(t *testing.T) {
 
 	t.Run("respects context timeout", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		// This test verifies that publishEvent creates a timeout context
 		// The actual timeout behavior is tested through the mock
@@ -321,7 +324,9 @@ func TestShutdown(t *testing.T) {
 	t.Run("shuts down cleanly with empty queue", func(t *testing.T) {
 		p := New(nil)
 
-		p.Shutdown()
+		if err := p.Shutdown(context.Background()); err != nil {
+			t.Errorf("Shutdown returned error: %v", err)
+		}
 
 		// Verify context was cancelled
 		select {
@@ -358,7 +363,9 @@ func TestShutdown(t *testing.T) {
 		queuedBefore := len(p.queue)
 
 		// Shutdown should wait for workers to process
-		p.Shutdown()
+		if err := p.Shutdown(context.Background()); err != nil {
+			t.Errorf("Shutdown returned error: %v", err)
+		}
 
 		// Queue should be drained or smaller
 		queuedAfter := len(p.queue)
@@ -370,41 +377,42 @@ func TestShutdown(t *testing.T) {
 	t.Run("handles shutdown timeout", func(t *testing.T) {
 		p := New(nil)
 
-		// Stop workers from processing by canceling immediately
-		p.cancel()
-		time.Sleep(100 * time.Millisecond)
-
-		// Fill queue with many events
+		// Fill queue with events that will take time to process (API calls)
 		for i := 0; i < 100; i++ {
 			event := &core.Event{
 				PublishEventRequest: mcpcatapi.PublishEventRequest{
 					EventType: strPtr("test"),
 				},
 			}
-			// Direct insertion to avoid Publish() logic
-			select {
-			case p.queue <- event:
-			default:
-				break
-			}
+			p.Publish(event)
 		}
 
+		// Use an already-expired context so Shutdown returns immediately with an error.
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+		defer cancel()
+		time.Sleep(1 * time.Millisecond) // ensure deadline has elapsed
+
 		start := time.Now()
-		p.Shutdown()
+		err := p.Shutdown(ctx)
 		elapsed := time.Since(start)
 
-		// Shutdown should timeout around 5 seconds (give some tolerance)
-		if elapsed > 6*time.Second {
-			t.Errorf("shutdown timeout = %v, want <= 6s", elapsed)
+		// Shutdown should return an error due to context timeout
+		if err == nil {
+			t.Error("expected Shutdown to return a timeout error")
+		}
+
+		// Shutdown should complete very quickly since context already expired
+		if elapsed > 2*time.Second {
+			t.Errorf("shutdown took too long = %v, want < 2s", elapsed)
 		}
 	})
 
 	t.Run("can be called multiple times safely", func(t *testing.T) {
 		p := New(nil)
 
-		p.Shutdown()
-		p.Shutdown()
-		p.Shutdown()
+		p.Shutdown(context.Background())
+		p.Shutdown(context.Background())
+		p.Shutdown(context.Background())
 
 		// Should not panic or deadlock
 	})
@@ -412,7 +420,7 @@ func TestShutdown(t *testing.T) {
 	t.Run("stops accepting new events after shutdown", func(t *testing.T) {
 		p := New(nil)
 
-		p.Shutdown()
+		p.Shutdown(context.Background())
 
 		// Try to publish after shutdown
 		event := &core.Event{
@@ -429,7 +437,7 @@ func TestShutdown(t *testing.T) {
 func TestWorker(t *testing.T) {
 	t.Run("processes events from queue", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		event := &core.Event{
 			PublishEventRequest: mcpcatapi.PublishEventRequest{
@@ -481,7 +489,7 @@ func TestWorker(t *testing.T) {
 
 	t.Run("ignores nil events in queue", func(t *testing.T) {
 		p := New(nil)
-		defer p.Shutdown()
+		defer p.Shutdown(context.Background())
 
 		// Manually insert nil into queue
 		p.queue <- nil
@@ -494,40 +502,197 @@ func TestWorker(t *testing.T) {
 	})
 }
 
-func TestHandleSignals(t *testing.T) {
-	t.Run("sets flag on first call", func(t *testing.T) {
-		p := New(nil)
-		defer p.Shutdown()
+// newSpyPublisher creates a Publisher whose workers increment an atomic counter
+// instead of making real API calls. This allows tests to precisely verify how
+// many events were processed. The optional handler func, if non-nil, is called
+// for each event (e.g. to inject delays). The returned *int64 points to the
+// processed-event counter.
+func newSpyPublisher(numWorkers int, queueSize int, handler func(*core.Event)) (*Publisher, *int64) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var counter int64
 
-		// Give signal handler goroutine time to start
-		time.Sleep(100 * time.Millisecond)
+	p := &Publisher{
+		queue:      make(chan *core.Event, queueSize),
+		logger:     logging.New(),
+		ctx:        ctx,
+		cancel:     cancel,
+		shutdownCh: make(chan struct{}),
+	}
 
-		// Signal handler should have been started by New()
-		if !p.signalHandler.Load() {
-			t.Error("signal handler flag not set after starting")
-		}
-
-		// Try to start another signal handler - should be prevented
-		go p.handleSignals()
-
-		// Give it time to attempt
-		time.Sleep(50 * time.Millisecond)
-
-		// Only one should be running (verified by not having a panic or issue)
-	})
-
-	t.Run("stops on shutdown signal", func(t *testing.T) {
-		p := New(nil)
-
-		// Trigger shutdown through the shutdown channel
+	for i := 0; i < numWorkers; i++ {
+		p.wg.Add(1)
 		go func() {
-			time.Sleep(50 * time.Millisecond)
-			p.Shutdown()
+			defer p.wg.Done()
+			for {
+				select {
+				case <-p.ctx.Done():
+					// Drain remaining events before exiting
+					for {
+						select {
+						case event := <-p.queue:
+							if event != nil {
+								if handler != nil {
+									handler(event)
+								}
+								atomic.AddInt64(&counter, 1)
+							}
+						default:
+							return
+						}
+					}
+				case event := <-p.queue:
+					if event == nil {
+						continue
+					}
+					if handler != nil {
+						handler(event)
+					}
+					atomic.AddInt64(&counter, 1)
+				}
+			}
 		}()
+	}
 
-		// Wait for shutdown
-		<-p.shutdownCh
+	return p, &counter
+}
 
-		// handleSignals should exit gracefully
-	})
+// makeEvent creates a simple test event.
+func makeEvent(eventType string) *core.Event {
+	return &core.Event{
+		PublishEventRequest: mcpcatapi.PublishEventRequest{
+			EventType: strPtr(eventType),
+		},
+	}
+}
+
+func TestShutdownDrainsAllQueuedEvents(t *testing.T) {
+	const totalEvents = 20
+
+	p, counter := newSpyPublisher(MaxWorkers, QueueSize, nil)
+
+	for i := 0; i < totalEvents; i++ {
+		p.Publish(makeEvent("drain.test"))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := p.Shutdown(ctx)
+	if err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+
+	processed := atomic.LoadInt64(counter)
+	if processed != totalEvents {
+		t.Errorf("processed %d events, want %d", processed, totalEvents)
+	}
+}
+
+func TestShutdownRespectsContextDeadline(t *testing.T) {
+	// Use a handler that blocks long enough to prevent draining within the
+	// deadline. Each event takes 100ms and we enqueue 50, but the context
+	// expires almost immediately.
+	slowHandler := func(_ *core.Event) {
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	p, _ := newSpyPublisher(1, QueueSize, slowHandler)
+
+	for i := 0; i < 50; i++ {
+		p.Publish(makeEvent("slow.test"))
+	}
+
+	// Use an already-expired context
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	defer cancel()
+	time.Sleep(1 * time.Millisecond) // ensure deadline has elapsed
+
+	err := p.Shutdown(ctx)
+	if err == nil {
+		t.Fatal("expected Shutdown to return a non-nil error when context deadline exceeded")
+	}
+
+	// The error should be a context error (DeadlineExceeded or Canceled)
+	if err != context.DeadlineExceeded && err != context.Canceled {
+		t.Errorf("expected context.DeadlineExceeded or context.Canceled, got %v", err)
+	}
+}
+
+func TestShutdownIsIdempotent(t *testing.T) {
+	p, _ := newSpyPublisher(MaxWorkers, QueueSize, nil)
+
+	// Enqueue a few events so the first shutdown has real work to do
+	for i := 0; i < 5; i++ {
+		p.Publish(makeEvent("idempotent.test"))
+	}
+
+	err1 := p.Shutdown(context.Background())
+	if err1 != nil {
+		t.Errorf("first Shutdown returned error: %v", err1)
+	}
+
+	// Second call must not panic and must also return nil
+	err2 := p.Shutdown(context.Background())
+	if err2 != nil {
+		t.Errorf("second Shutdown returned error: %v", err2)
+	}
+}
+
+func TestWorkerDrainsOnContextCancel(t *testing.T) {
+	// Regression test: when the publisher's internal context is cancelled,
+	// workers must drain all remaining queued events before exiting.
+
+	const totalEvents = 15
+	p, counter := newSpyPublisher(MaxWorkers, QueueSize, nil)
+
+	// Pause workers so events accumulate in the queue. We do this by
+	// cancelling the context first, then waiting for workers to stop, then
+	// re-creating the publisher with events already queued.
+	// Instead, a simpler approach: enqueue events, then cancel the context
+	// (simulating what Shutdown does), then wait for workers to finish.
+
+	for i := 0; i < totalEvents; i++ {
+		p.Publish(makeEvent("drain.cancel.test"))
+	}
+
+	// Give a moment for events to land in the channel
+	time.Sleep(10 * time.Millisecond)
+
+	// Cancel the internal context (same thing Shutdown does)
+	p.cancel()
+
+	// Wait for all workers to finish draining
+	p.wg.Wait()
+
+	processed := atomic.LoadInt64(counter)
+	if processed != totalEvents {
+		t.Errorf("processed %d events after context cancel, want %d", processed, totalEvents)
+	}
+}
+
+func TestShutdownReturnsErrorWhenEventsRemain(t *testing.T) {
+	// Use a handler that blocks for a long time, ensuring events remain
+	// unprocessed when the short timeout fires.
+	slowHandler := func(_ *core.Event) {
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Use a single worker so processing is serialised and slow
+	p, _ := newSpyPublisher(1, QueueSize, slowHandler)
+
+	for i := 0; i < 20; i++ {
+		p.Publish(makeEvent("timeout.test"))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := p.Shutdown(ctx)
+	if err == nil {
+		t.Fatal("expected Shutdown to return an error when events remain unprocessed")
+	}
+
+	if err != context.DeadlineExceeded {
+		t.Errorf("expected context.DeadlineExceeded, got %v", err)
+	}
 }

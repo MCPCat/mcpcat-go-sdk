@@ -2,15 +2,31 @@ package event
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 )
 
-func TestCreateEventForSession(t *testing.T) {
+func TestNewEventID(t *testing.T) {
+	id := NewEventID()
+	if !strings.HasPrefix(id, "evt_") {
+		t.Errorf("expected event ID to start with 'evt_', got %s", id)
+	}
+	if len(id) < 5 {
+		t.Errorf("expected event ID to be non-trivial, got %s", id)
+	}
+
+	// Ensure uniqueness
+	id2 := NewEventID()
+	if id == id2 {
+		t.Error("expected unique event IDs")
+	}
+}
+
+func TestNewEvent(t *testing.T) {
 	projectID := "proj_123"
 	sessionID := "ses_456"
 	clientName := "test-client"
@@ -28,18 +44,16 @@ func TestCreateEventForSession(t *testing.T) {
 	tests := []struct {
 		name         string
 		session      *core.Session
-		method       mcp.MCPMethod
-		request      any
-		response     any
+		eventType    string
 		duration     *int32
 		isError      bool
 		errorDetails error
 		validate     func(*testing.T, *Event)
 	}{
 		{
-			name:    "nil session returns nil",
-			session: nil,
-			method:  mcp.MethodToolsCall,
+			name:      "nil session returns nil",
+			session:   nil,
+			eventType: "mcp:tools/call",
 			validate: func(t *testing.T, evt *Event) {
 				if evt != nil {
 					t.Errorf("expected nil event for nil session, got %+v", evt)
@@ -47,23 +61,15 @@ func TestCreateEventForSession(t *testing.T) {
 			},
 		},
 		{
-			name:    "basic event creation with required fields",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "test_tool",
-				},
-			},
+			name:      "basic event creation",
+			session:   session,
+			eventType: "mcp:tools/call",
 			validate: func(t *testing.T, evt *Event) {
 				if evt == nil {
 					t.Fatal("expected non-nil event")
 				}
-				if evt.Id == nil || len(*evt.Id) == 0 {
-					t.Error("event ID should be generated")
-				}
-				if evt.Id != nil && (*evt.Id)[:4] != "evt_" {
-					t.Errorf("event ID should have 'evt_' prefix, got %s", *evt.Id)
+				if evt.Id == nil || !strings.HasPrefix(*evt.Id, "evt_") {
+					t.Errorf("event ID should have 'evt_' prefix, got %v", evt.Id)
 				}
 				if evt.ProjectId == nil || *evt.ProjectId != projectID {
 					t.Errorf("expected ProjectID %s, got %v", projectID, evt.ProjectId)
@@ -80,14 +86,9 @@ func TestCreateEventForSession(t *testing.T) {
 			},
 		},
 		{
-			name:    "event with error details",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "failing_tool",
-				},
-			},
+			name:         "event with error details",
+			session:      session,
+			eventType:    "mcp:tools/call",
 			isError:      true,
 			errorDetails: errors.New("tool execution failed"),
 			validate: func(t *testing.T, evt *Event) {
@@ -100,17 +101,33 @@ func TestCreateEventForSession(t *testing.T) {
 				if evt.Error == nil {
 					t.Fatal("error details should be set")
 				}
-				if msg, ok := evt.Error["message"].(string); !ok || msg != "tool execution failed" {
-					t.Errorf("expected error message 'tool execution failed', got %v", evt.Error)
+
+				// Validate structured error fields from CaptureException
+				msg, ok := evt.Error["message"].(string)
+				if !ok || msg != "tool execution failed" {
+					t.Errorf("expected error message 'tool execution failed', got %v", evt.Error["message"])
+				}
+				typ, ok := evt.Error["type"].(string)
+				if !ok || typ != "*errors.errorString" {
+					t.Errorf("expected error type '*errors.errorString', got %v", evt.Error["type"])
+				}
+				plat, ok := evt.Error["platform"].(string)
+				if !ok || plat != "go" {
+					t.Errorf("expected platform 'go', got %v", evt.Error["platform"])
+				}
+				if _, ok := evt.Error["stack"].(string); !ok {
+					t.Error("expected stack trace string")
+				}
+				if _, ok := evt.Error["frames"].([]map[string]any); !ok {
+					t.Error("expected frames slice")
 				}
 			},
 		},
 		{
-			name:    "event with error flag but no error details",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{},
-			isError: true,
+			name:      "event with error flag but no error details",
+			session:   session,
+			eventType: "mcp:tools/call",
+			isError:   true,
 			validate: func(t *testing.T, evt *Event) {
 				if evt == nil {
 					t.Fatal("expected non-nil event")
@@ -124,62 +141,10 @@ func TestCreateEventForSession(t *testing.T) {
 			},
 		},
 		{
-			name:    "tool call with user intent",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "search_tool",
-					Arguments: map[string]any{
-						"context": "find my files",
-						"query":   "documents",
-					},
-				},
-			},
-			validate: func(t *testing.T, evt *Event) {
-				if evt == nil {
-					t.Fatal("expected non-nil event")
-				}
-				if evt.UserIntent == nil || *evt.UserIntent != "find my files" {
-					t.Errorf("expected UserIntent 'find my files', got %v", evt.UserIntent)
-				}
-				// Context should be filtered from parameters
-				if evt.Parameters != nil {
-					if args, ok := evt.Parameters["arguments"].(map[string]any); ok {
-						if _, hasContext := args["context"]; hasContext {
-							t.Error("context parameter should be filtered from arguments")
-						}
-					}
-				}
-			},
-		},
-		{
-			name:    "tool call without user intent",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "simple_tool",
-					Arguments: map[string]any{
-						"param1": "value1",
-					},
-				},
-			},
-			validate: func(t *testing.T, evt *Event) {
-				if evt == nil {
-					t.Fatal("expected non-nil event")
-				}
-				if evt.UserIntent != nil {
-					t.Errorf("expected nil UserIntent, got %v", *evt.UserIntent)
-				}
-			},
-		},
-		{
-			name:     "event with duration",
-			session:  session,
-			method:   mcp.MethodToolsCall,
-			request:  &mcp.CallToolRequest{},
-			duration: func() *int32 { d := int32(250); return &d }(),
+			name:      "event with duration",
+			session:   session,
+			eventType: "mcp:tools/call",
+			duration:  func() *int32 { d := int32(250); return &d }(),
 			validate: func(t *testing.T, evt *Event) {
 				if evt == nil {
 					t.Fatal("expected non-nil event")
@@ -190,46 +155,9 @@ func TestCreateEventForSession(t *testing.T) {
 			},
 		},
 		{
-			name:    "resource read sets resource name",
-			session: session,
-			method:  mcp.MethodResourcesRead,
-			request: &mcp.ReadResourceRequest{
-				Params: mcp.ReadResourceParams{
-					URI: "file:///home/user/document.txt",
-				},
-			},
-			validate: func(t *testing.T, evt *Event) {
-				if evt == nil {
-					t.Fatal("expected non-nil event")
-				}
-				if evt.ResourceName == nil || *evt.ResourceName != "file:///home/user/document.txt" {
-					t.Errorf("expected ResourceName 'file:///home/user/document.txt', got %v", evt.ResourceName)
-				}
-			},
-		},
-		{
-			name:    "tool call sets resource name to tool name",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "my_awesome_tool",
-				},
-			},
-			validate: func(t *testing.T, evt *Event) {
-				if evt == nil {
-					t.Fatal("expected non-nil event")
-				}
-				if evt.ResourceName == nil || *evt.ResourceName != "my_awesome_tool" {
-					t.Errorf("expected ResourceName 'my_awesome_tool', got %v", evt.ResourceName)
-				}
-			},
-		},
-		{
-			name:    "session metadata copied to event",
-			session: session,
-			method:  mcp.MethodInitialize,
-			request: &mcp.InitializeRequest{},
+			name:      "session metadata copied to event",
+			session:   session,
+			eventType: "mcp:initialize",
 			validate: func(t *testing.T, evt *Event) {
 				if evt == nil {
 					t.Fatal("expected non-nil event")
@@ -246,43 +174,18 @@ func TestCreateEventForSession(t *testing.T) {
 			},
 		},
 		{
-			name:    "event with response data",
-			session: session,
-			method:  mcp.MethodToolsCall,
-			request: &mcp.CallToolRequest{},
-			response: &mcp.CallToolResult{
-				Content: []mcp.Content{
-					&mcp.TextContent{
-						Type: "text",
-						Text: "result",
-					},
-				},
+			name: "handles session with nil SessionID",
+			session: &core.Session{
+				ProjectID: &projectID,
+				SessionID: nil,
 			},
+			eventType: "mcp:tools/call",
 			validate: func(t *testing.T, evt *Event) {
 				if evt == nil {
 					t.Fatal("expected non-nil event")
 				}
-				if evt.Response == nil {
-					t.Fatal("response should be set")
-				}
-				if _, ok := evt.Response["content"]; !ok {
-					t.Error("response should contain 'content' field")
-				}
-			},
-		},
-		{
-			name:     "error response should not set response data",
-			session:  session,
-			method:   mcp.MethodToolsCall,
-			request:  &mcp.CallToolRequest{},
-			response: &mcp.CallToolResult{},
-			isError:  true,
-			validate: func(t *testing.T, evt *Event) {
-				if evt == nil {
-					t.Fatal("expected non-nil event")
-				}
-				if evt.Response != nil {
-					t.Errorf("response should be nil for error events, got %v", evt.Response)
+				if evt.SessionId != "" {
+					t.Errorf("expected empty SessionId, got %s", evt.SessionId)
 				}
 			},
 		},
@@ -290,389 +193,8 @@ func TestCreateEventForSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			evt := CreateEventForSession(
-				tt.session,
-				tt.method,
-				tt.request,
-				tt.response,
-				tt.duration,
-				tt.isError,
-				tt.errorDetails,
-			)
+			evt := NewEvent(tt.session, tt.eventType, tt.duration, tt.isError, tt.errorDetails)
 			tt.validate(t, evt)
-		})
-	}
-}
-
-func TestMapMethodToEventType(t *testing.T) {
-	tests := []struct {
-		method mcp.MCPMethod
-		want   string
-	}{
-		{mcp.MethodToolsCall, "mcp:tools/call"},
-		{mcp.MethodResourcesRead, "mcp:resources/read"},
-		{mcp.MethodInitialize, "mcp:initialize"},
-		{mcp.MethodToolsList, "mcp:tools/list"},
-		{mcp.MethodResourcesList, "mcp:resources/list"},
-		{mcp.MethodPromptsList, "mcp:prompts/list"},
-		{mcp.MethodPromptsGet, "mcp:prompts/get"},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.method), func(t *testing.T) {
-			got := mapMethodToEventType(tt.method)
-			if got != tt.want {
-				t.Errorf("mapMethodToEventType(%s) = %s, want %s", tt.method, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractUserIntentFromRequest(t *testing.T) {
-	tests := []struct {
-		name    string
-		request any
-		want    string
-	}{
-		{
-			name: "extracts context from tool request",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Arguments: map[string]any{
-						"context": "search for documents",
-						"query":   "*.pdf",
-					},
-				},
-			},
-			want: "search for documents",
-		},
-		{
-			name: "returns empty when no context parameter",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Arguments: map[string]any{
-						"query": "*.pdf",
-					},
-				},
-			},
-			want: "",
-		},
-		{
-			name: "returns empty when arguments is nil",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Arguments: nil,
-				},
-			},
-			want: "",
-		},
-		{
-			name: "returns empty when context is not a string",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Arguments: map[string]any{
-						"context": 123,
-					},
-				},
-			},
-			want: "",
-		},
-		{
-			name:    "returns empty for non-CallToolRequest",
-			request: &mcp.ReadResourceRequest{},
-			want:    "",
-		},
-		{
-			name:    "returns empty for nil request",
-			request: nil,
-			want:    "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractUserIntentFromRequest(tt.request)
-			if got != tt.want {
-				t.Errorf("extractUserIntentFromRequest() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractParameters(t *testing.T) {
-	tests := []struct {
-		name    string
-		request any
-		want    map[string]any
-	}{
-		{
-			name: "CallToolRequest with arguments",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "test_tool",
-					Arguments: map[string]any{
-						"param1": "value1",
-						"param2": 42,
-					},
-				},
-			},
-			want: map[string]any{
-				"name": "test_tool",
-				"arguments": map[string]any{
-					"param1": "value1",
-					"param2": 42,
-				},
-			},
-		},
-		{
-			name: "CallToolRequest filters out context",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "tool_with_context",
-					Arguments: map[string]any{
-						"context": "user intent",
-						"param1":  "value1",
-					},
-				},
-			},
-			want: map[string]any{
-				"name": "tool_with_context",
-				"arguments": map[string]any{
-					"param1": "value1",
-				},
-			},
-		},
-		{
-			name: "CallToolRequest with only context is filtered",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "tool",
-					Arguments: map[string]any{
-						"context": "only context",
-					},
-				},
-			},
-			want: map[string]any{
-				"name": "tool",
-			},
-		},
-		{
-			name: "CallToolRequest without arguments",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "simple_tool",
-				},
-			},
-			want: map[string]any{
-				"name": "simple_tool",
-			},
-		},
-		{
-			name: "ReadResourceRequest",
-			request: &mcp.ReadResourceRequest{
-				Params: mcp.ReadResourceParams{
-					URI: "file:///path/to/resource",
-				},
-			},
-			want: map[string]any{
-				"uri": "file:///path/to/resource",
-			},
-		},
-		{
-			name: "GetPromptRequest with arguments",
-			request: &mcp.GetPromptRequest{
-				Params: mcp.GetPromptParams{
-					Name: "test_prompt",
-					Arguments: map[string]string{
-						"var1": "value1",
-					},
-				},
-			},
-			want: map[string]any{
-				"name": "test_prompt",
-				"arguments": map[string]string{
-					"var1": "value1",
-				},
-			},
-		},
-		{
-			name: "GetPromptRequest without arguments",
-			request: &mcp.GetPromptRequest{
-				Params: mcp.GetPromptParams{
-					Name: "simple_prompt",
-				},
-			},
-			want: map[string]any{
-				"name": "simple_prompt",
-			},
-		},
-		{
-			name: "InitializeRequest",
-			request: &mcp.InitializeRequest{
-				Params: mcp.InitializeParams{
-					ProtocolVersion: "1.0",
-					ClientInfo: mcp.Implementation{
-						Name:    "test-client",
-						Version: "1.0.0",
-					},
-				},
-			},
-			want: map[string]any{
-				"protocolVersion": "1.0",
-				"clientInfo": mcp.Implementation{
-					Name:    "test-client",
-					Version: "1.0.0",
-				},
-			},
-		},
-		{
-			name:    "unknown request type returns nil",
-			request: &mcp.ListToolsRequest{},
-			want:    nil,
-		},
-		{
-			name:    "nil request returns nil",
-			request: nil,
-			want:    nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractParameters(tt.request)
-			if !mapsEqual(got, tt.want) {
-				t.Errorf("extractParameters() = %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractResponse(t *testing.T) {
-	tests := []struct {
-		name     string
-		response any
-		want     map[string]any
-	}{
-		{
-			name: "CallToolResult with content",
-			response: &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.TextContent{
-						Type: "text",
-						Text: "result",
-					},
-				},
-				IsError: false,
-			},
-			want: map[string]any{
-				"content": []any{
-					map[string]any{"type": "text", "text": "result"},
-				},
-				"isError": false,
-			},
-		},
-		{
-			name: "CallToolResult with structured content",
-			response: &mcp.CallToolResult{
-				StructuredContent: map[string]any{
-					"data": "structured",
-				},
-				IsError: false,
-			},
-			want: map[string]any{
-				"structuredContent": map[string]any{
-					"data": "structured",
-				},
-				"isError": false,
-			},
-		},
-		{
-			name: "CallToolResult with error",
-			response: &mcp.CallToolResult{
-				IsError: true,
-			},
-			want: map[string]any{
-				"isError": true,
-			},
-		},
-		{
-			name: "ReadResourceResult",
-			response: &mcp.ReadResourceResult{
-				Contents: []mcp.ResourceContents{
-					mcp.TextResourceContents{
-						URI:  "file:///test",
-						Text: "content",
-					},
-				},
-			},
-			want: map[string]any{
-				"contents": []any{
-					map[string]any{"uri": "file:///test", "text": "content"},
-				},
-			},
-		},
-		{
-			name: "GetPromptResult",
-			response: &mcp.GetPromptResult{
-				Description: "Test prompt",
-				Messages: []mcp.PromptMessage{
-					{
-						Role: mcp.RoleUser,
-						Content: mcp.TextContent{
-							Type: "text",
-							Text: "hello",
-						},
-					},
-				},
-			},
-			want: map[string]any{
-				"description": "Test prompt",
-				"messages": []any{
-					map[string]any{
-						"role": "user",
-						"content": map[string]any{
-							"type": "text",
-							"text": "hello",
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "InitializeResult",
-			response: &mcp.InitializeResult{
-				ProtocolVersion: "1.0",
-				ServerInfo: mcp.Implementation{
-					Name:    "test-server",
-					Version: "2.0.0",
-				},
-			},
-			want: map[string]any{
-				"protocolVersion": "1.0",
-				"serverInfo": map[string]any{
-					"name":    "test-server",
-					"version": "2.0.0",
-				},
-			},
-		},
-		{
-			name:     "unknown response type returns nil",
-			response: &mcp.ListToolsResult{},
-			want:     nil,
-		},
-		{
-			name:     "nil response returns nil",
-			response: nil,
-			want:     nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractResponse(tt.response)
-			if !mapsEqual(got, tt.want) {
-				t.Errorf("extractResponse() = %+v, want %+v", got, tt.want)
-			}
 		})
 	}
 }
@@ -745,83 +267,9 @@ func TestConvertToMap(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := convertToMap(tt.v)
+			got := ConvertToMap(tt.v)
 			if !valuesEqual(got, tt.want) {
-				t.Errorf("convertToMap() = %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractResourceName(t *testing.T) {
-	tests := []struct {
-		name    string
-		request any
-		want    string
-	}{
-		{
-			name: "extracts URI from ReadResourceRequest",
-			request: &mcp.ReadResourceRequest{
-				Params: mcp.ReadResourceParams{
-					URI: "file:///home/user/doc.txt",
-				},
-			},
-			want: "file:///home/user/doc.txt",
-		},
-		{
-			name:    "returns empty for non-ReadResourceRequest",
-			request: &mcp.CallToolRequest{},
-			want:    "",
-		},
-		{
-			name:    "returns empty for nil request",
-			request: nil,
-			want:    "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractResourceName(tt.request)
-			if got != tt.want {
-				t.Errorf("extractResourceName() = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestExtractToolName(t *testing.T) {
-	tests := []struct {
-		name    string
-		request any
-		want    string
-	}{
-		{
-			name: "extracts name from CallToolRequest",
-			request: &mcp.CallToolRequest{
-				Params: mcp.CallToolParams{
-					Name: "my_tool",
-				},
-			},
-			want: "my_tool",
-		},
-		{
-			name:    "returns empty for non-CallToolRequest",
-			request: &mcp.ReadResourceRequest{},
-			want:    "",
-		},
-		{
-			name:    "returns empty for nil request",
-			request: nil,
-			want:    "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractToolName(tt.request)
-			if got != tt.want {
-				t.Errorf("extractToolName() = %q, want %q", got, tt.want)
+				t.Errorf("ConvertToMap() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
@@ -906,7 +354,7 @@ func TestCopySessionToEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			copySessionToEvent(tt.session, tt.event)
+			CopySessionToEvent(tt.session, tt.event)
 			tt.validate(t, tt.event)
 		})
 	}
@@ -1010,6 +458,20 @@ func TestCreateIdentifyEvent(t *testing.T) {
 	}
 }
 
+func TestPtr(t *testing.T) {
+	s := "hello"
+	p := Ptr(s)
+	if p == nil || *p != "hello" {
+		t.Errorf("Ptr() should return pointer to value, got %v", p)
+	}
+
+	i := 42
+	ip := Ptr(i)
+	if ip == nil || *ip != 42 {
+		t.Errorf("Ptr() should return pointer to int, got %v", ip)
+	}
+}
+
 // mockLogger is a simple logger implementation for testing
 type mockLogger struct {
 	logs []string
@@ -1088,30 +550,6 @@ func strPtr(s string) *string {
 	return &s
 }
 
-func mapsEqual(a, b map[string]any) bool {
-	if a == nil && b == nil {
-		return true
-	}
-	if a == nil || b == nil {
-		return false
-	}
-	if len(a) != len(b) {
-		return false
-	}
-
-	for k, va := range a {
-		vb, ok := b[k]
-		if !ok {
-			return false
-		}
-		if !valuesEqual(va, vb) {
-			return false
-		}
-	}
-
-	return true
-}
-
 func valuesEqual(a, b any) bool {
 	if a == nil && b == nil {
 		return true
@@ -1138,32 +576,16 @@ func valuesEqual(a, b any) bool {
 		return ok && va == vb
 	case map[string]any:
 		vb, ok := b.(map[string]any)
-		return ok && mapsEqual(va, vb)
-	case map[string]string:
-		// Handle map[string]string by comparing with map[string]any
-		vb, ok := b.(map[string]any)
-		if ok {
-			if len(va) != len(vb) {
+		if !ok || len(va) != len(vb) {
+			return false
+		}
+		for k, vaVal := range va {
+			vbVal, exists := vb[k]
+			if !exists || !valuesEqual(vaVal, vbVal) {
 				return false
 			}
-			for k, v := range va {
-				if vbVal, exists := vb[k]; !exists || vbVal != v {
-					return false
-				}
-			}
-			return true
 		}
-		// Also check if b is map[string]string
-		vbStr, ok := b.(map[string]string)
-		if ok && len(va) == len(vbStr) {
-			for k, v := range va {
-				if vbStr[k] != v {
-					return false
-				}
-			}
-			return true
-		}
-		return false
+		return true
 	case []any:
 		vb, ok := b.([]any)
 		if !ok || len(va) != len(vb) {
@@ -1175,11 +597,7 @@ func valuesEqual(a, b any) bool {
 			}
 		}
 		return true
-	case mcp.Implementation:
-		vb, ok := b.(mcp.Implementation)
-		return ok && va.Name == vb.Name && va.Version == vb.Version
 	default:
-		// For types we can't directly compare, use reflect
 		return false
 	}
 }

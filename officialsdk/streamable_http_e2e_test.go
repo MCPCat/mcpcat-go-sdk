@@ -30,8 +30,7 @@ func setupStreamableHTTP(t *testing.T, opts *Options) (*mcp.ClientSession, *Todo
 	httpServer := httptest.NewServer(handler)
 
 	transport := &mcp.StreamableClientTransport{
-		Endpoint:             httpServer.URL,
-		DisableStandaloneSSE: true,
+		Endpoint: httpServer.URL,
 	}
 
 	client := mcp.NewClient(&mcp.Implementation{Name: "http-test-client", Version: "2.0.0"}, nil)

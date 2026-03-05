@@ -2,7 +2,6 @@ package officialsdk
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -169,21 +168,10 @@ func extractExtra(req mcp.Request) map[string]any {
 		extra["header"] = re.Header
 	}
 
+	// Serialize TokenInfo generically so we capture all fields (including any
+	// added in newer go-sdk versions) without referencing them directly.
 	if re.TokenInfo != nil {
-		tokenInfo := make(map[string]any)
-		if len(re.TokenInfo.Scopes) > 0 {
-			tokenInfo["scopes"] = re.TokenInfo.Scopes
-		}
-		if !re.TokenInfo.Expiration.IsZero() {
-			tokenInfo["expiration"] = re.TokenInfo.Expiration.Format(time.RFC3339)
-		}
-		if re.TokenInfo.UserID != "" {
-			tokenInfo["userID"] = re.TokenInfo.UserID
-		}
-		if len(re.TokenInfo.Extra) > 0 {
-			tokenInfo["extra"] = re.TokenInfo.Extra
-		}
-		if len(tokenInfo) > 0 {
+		if tokenInfo := mcpcat.ConvertToMap(re.TokenInfo); tokenInfo != nil {
 			extra["tokenInfo"] = tokenInfo
 		}
 	}

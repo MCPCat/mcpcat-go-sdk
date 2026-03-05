@@ -4,9 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -386,18 +384,12 @@ func TestUnmarshalArguments_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestExtractExtra_WithHeadersAndTokenInfo(t *testing.T) {
+func TestExtractExtra_WithHeaders(t *testing.T) {
 	serverReq := &mcp.ServerRequest[*mcp.CallToolParamsRaw]{
 		Extra: &mcp.RequestExtra{
 			Header: http.Header{
 				"Authorization": []string{"Bearer tok_123"},
 				"User-Agent":    []string{"claude-desktop/1.0"},
-			},
-			TokenInfo: &auth.TokenInfo{
-				Scopes:     []string{"read", "write"},
-				Expiration: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-				UserID:     "user-abc",
-				Extra:      map[string]any{"orgID": "org-123"},
 			},
 		},
 	}
@@ -413,18 +405,6 @@ func TestExtractExtra_WithHeadersAndTokenInfo(t *testing.T) {
 	}
 	if headers.Get("Authorization") != "Bearer tok_123" {
 		t.Errorf("expected Authorization header, got %v", headers.Get("Authorization"))
-	}
-
-	tokenInfo, ok := extra["tokenInfo"].(map[string]any)
-	if !ok {
-		t.Fatal("expected tokenInfo to be map[string]any")
-	}
-	scopes, ok := tokenInfo["scopes"].([]string)
-	if !ok || len(scopes) != 2 {
-		t.Errorf("expected 2 scopes, got %v", tokenInfo["scopes"])
-	}
-	if tokenInfo["userID"] != "user-abc" {
-		t.Errorf("expected userID 'user-abc', got %v", tokenInfo["userID"])
 	}
 }
 

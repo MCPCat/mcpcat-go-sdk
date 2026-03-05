@@ -281,6 +281,23 @@ func TestExporterConfig(t *testing.T) {
 	}
 }
 
+func TestPtr(t *testing.T) {
+	s := Ptr("hello")
+	if *s != "hello" {
+		t.Errorf("Ptr(\"hello\") = %q, want \"hello\"", *s)
+	}
+
+	n := Ptr(42)
+	if *n != 42 {
+		t.Errorf("Ptr(42) = %d, want 42", *n)
+	}
+
+	b := Ptr(true)
+	if *b != true {
+		t.Errorf("Ptr(true) = %v, want true", *b)
+	}
+}
+
 func TestMCPcatInstance(t *testing.T) {
 	// Test that MCPcatInstance can be created
 	opts := DefaultOptions()

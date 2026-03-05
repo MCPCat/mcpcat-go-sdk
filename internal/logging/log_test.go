@@ -598,6 +598,53 @@ func TestUpdateWriter_ClosesFileOnDebugDisable(t *testing.T) {
 	}
 }
 
+// TestResetForTesting verifies that ResetForTesting resets the singleton logger.
+func TestResetForTesting(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	logger1 := New()
+
+	ResetForTesting()
+
+	logger2 := New()
+	if logger1 == logger2 {
+		t.Error("Expected new logger instance after ResetForTesting")
+	}
+}
+
+// TestResetForTesting_WhenNil verifies ResetForTesting handles nil defaultLogger.
+func TestResetForTesting_WhenNil(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	// Should not panic when no logger exists
+	ResetForTesting()
+}
+
+// TestResetForTesting_ClosesExistingLogger verifies ResetForTesting closes the
+// existing logger's file before resetting.
+func TestResetForTesting_ClosesExistingLogger(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	SetGlobalDebug(true)
+	logger := New()
+
+	if logger.file == nil {
+		t.Skip("log file not opened (debug mode)")
+	}
+
+	file := logger.file
+	ResetForTesting()
+
+	// File should have been closed
+	_, err := file.Write([]byte("test"))
+	if err == nil {
+		t.Error("expected write to closed file to fail after ResetForTesting")
+	}
+}
+
 // TestUpdateWriter_DebugToggleWritesToFile verifies that after enabling debug,
 // log messages are actually written to disk.
 func TestUpdateWriter_DebugToggleWritesToFile(t *testing.T) {

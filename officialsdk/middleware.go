@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,25 +13,24 @@ import (
 	mcpcat "github.com/mcpcat/mcpcat-go-sdk"
 )
 
+const maxCaptureConcurrency = 100
+
 // newTrackingMiddleware creates a single mcp.Middleware that intercepts all
 // incoming requests and captures MCPCat events.
+// The caller must call Stop() on the returned SessionMap during shutdown.
 func newTrackingMiddleware(
 	projectID string,
 	opts *Options,
 	publishFn func(*mcpcat.Event),
 	serverImpl *mcp.Implementation,
-) mcp.Middleware {
-	sessionMap := &sync.Map{}
+) (mcp.Middleware, *mcpcat.SessionMap) {
+	sessionMap := mcpcat.NewSessionMap(0)
+	captureSem := make(chan struct{}, maxCaptureConcurrency)
 
-	return func(next mcp.MethodHandler) mcp.MethodHandler {
+	mw := func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			startTime := time.Now()
 
-			// For tools/call requests, strip the injected "context" param
-			// BEFORE calling next so the go-sdk schema validation passes.
-			// The go-sdk validates against the original struct-derived schema
-			// which has additionalProperties: false, so any extra properties
-			// (like our injected "context") would be rejected.
 			var userIntent string
 			if method == "tools/call" && !opts.DisableToolCallContext {
 				userIntent = stripContextParam(req)
@@ -40,28 +38,34 @@ func newTrackingMiddleware(
 
 			result, err := next(ctx, method, req)
 
-			// Cap duration to math.MaxInt32 to prevent int32 overflow.
 			ms := time.Since(startTime).Milliseconds()
 			if ms > math.MaxInt32 {
 				ms = math.MaxInt32
 			}
 			duration := int32(ms)
 
-			// Inject context params for tools/list BEFORE returning the result
-			// so the modified result is sent back to the client.
 			if method == "tools/list" && !opts.DisableToolCallContext {
 				injectContextParams(result)
 			}
 
-			// Capture event asynchronously.
-			// Use context.WithoutCancel so the goroutine is not cancelled
-			// when the original request context is done.
+			// Capture event asynchronously with bounded concurrency.
+			// If the semaphore is full, skip capture to avoid goroutine buildup.
 			detachedCtx := context.WithoutCancel(ctx)
-			go captureEvent(detachedCtx, method, req, result, err, &duration, projectID, opts, publishFn, sessionMap, serverImpl, userIntent)
+			select {
+			case captureSem <- struct{}{}:
+				go func() {
+					defer func() { <-captureSem }()
+					captureEvent(detachedCtx, method, req, result, err, &duration, projectID, opts, publishFn, sessionMap, serverImpl, userIntent)
+				}()
+			default:
+				// Too many concurrent capture goroutines; drop this event.
+			}
 
 			return result, err
 		}
 	}
+
+	return mw, sessionMap
 }
 
 // stripContextParam extracts the "context" value from a tools/call request's
@@ -111,7 +115,7 @@ func captureEvent(
 	projectID string,
 	opts *Options,
 	publishFn func(*mcpcat.Event),
-	sessionMap *sync.Map,
+	sessionMap *mcpcat.SessionMap,
 	serverImpl *mcp.Implementation,
 	userIntent string,
 ) {
@@ -122,7 +126,7 @@ func captureEvent(
 	}
 
 	// Lock the session for all field reads/writes in this function.
-	ps.mu.Lock()
+	ps.Mu.Lock()
 
 	// For initialize responses, capture server info from the result
 	if method == "initialize" && result != nil {
@@ -157,9 +161,9 @@ func captureEvent(
 	eventType := fmt.Sprintf("mcp:%s", method)
 
 	// Create event using core API
-	evt := mcpcat.NewEvent(ps.sess, eventType, duration, isError, errorDetails)
+	evt := mcpcat.NewEvent(ps.Sess, eventType, duration, isError, errorDetails)
 	if evt == nil {
-		ps.mu.Unlock()
+		ps.Mu.Unlock()
 		return
 	}
 
@@ -208,19 +212,19 @@ func captureEvent(
 	}
 
 	// Release the session lock before calling external callbacks.
-	ps.mu.Unlock()
+	ps.Mu.Unlock()
 
 	// Use sync.Once to ensure Identify is called at most once per session.
 	if shouldIdentify {
-		ps.identifyOnce.Do(func() {
+		ps.IdentifyOnce.Do(func() {
 			if toolReq, ok := req.(*mcp.CallToolRequest); ok {
 				identifyInfo := opts.Identify(ctx, toolReq)
 				if identifyInfo != nil {
-					ps.mu.Lock()
-					ps.sess.IdentifyActorGivenId = &identifyInfo.UserID
-					ps.sess.IdentifyActorName = &identifyInfo.UserName
-					ps.sess.IdentifyData = identifyInfo.UserData
-					ps.mu.Unlock()
+					ps.Mu.Lock()
+					ps.Sess.IdentifyActorGivenId = &identifyInfo.UserID
+					ps.Sess.IdentifyActorName = &identifyInfo.UserName
+					ps.Sess.IdentifyData = identifyInfo.UserData
+					ps.Mu.Unlock()
 
 					// Copy updated identity info to this event
 					evt.IdentifyActorGivenId = &identifyInfo.UserID
@@ -228,9 +232,9 @@ func captureEvent(
 					evt.IdentifyData = identifyInfo.UserData
 
 					// Publish mcpcat:identify event
-					ps.mu.Lock()
-					identifyEvent := mcpcat.CreateIdentifyEvent(ps.sess)
-					ps.mu.Unlock()
+					ps.Mu.Lock()
+					identifyEvent := mcpcat.CreateIdentifyEvent(ps.Sess)
+					ps.Mu.Unlock()
 					if identifyEvent != nil {
 						publishFn(identifyEvent)
 					}

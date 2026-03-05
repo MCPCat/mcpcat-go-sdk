@@ -8,7 +8,6 @@ import (
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/exceptions"
-	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 	"github.com/segmentio/ksuid"
 )
 
@@ -37,7 +36,7 @@ func NewEvent(session *core.Session, eventType string, duration *int32, isError 
 			SessionId: sessionID,
 			EventType: &eventType,
 			Duration:  duration,
-			Timestamp: Ptr(time.Now()),
+			Timestamp: core.Ptr(time.Now()),
 		},
 	}
 
@@ -53,32 +52,22 @@ func NewEvent(session *core.Session, eventType string, duration *int32, isError 
 	return event
 }
 
-// ConvertToMap converts any value (including structs, slices of structs) to map[string]any or []any
-// by marshaling to JSON and unmarshaling back. This ensures the redactor can process all fields.
-// If conversion fails, the original value is returned to avoid impacting the server.
+// ConvertToMap converts any value (including structs, slices of structs) to
+// map[string]any or []any by marshaling to JSON and unmarshaling back. This
+// ensures the redactor can process all fields. If conversion fails, the
+// original value is returned to avoid impacting the server.
 func ConvertToMap(v any) any {
 	if v == nil {
 		return nil
 	}
 
-	// Use defer/recover to ensure any panics don't crash the server
-	defer func() {
-		if r := recover(); r != nil {
-			logger := logging.New()
-			logger.Debugf("ConvertToMap: panic recovered during conversion: %v (value type: %T)", r, v)
-		}
-	}()
-
-	// Marshal to JSON and unmarshal to generic types
 	data, err := json.Marshal(v)
 	if err != nil {
-		// If marshaling fails, return the original value silently
 		return v
 	}
 
 	var result any
 	if err := json.Unmarshal(data, &result); err != nil {
-		// If unmarshaling fails, return the original value silently
 		return v
 	}
 
@@ -124,7 +113,7 @@ func CreateIdentifyEvent(session *core.Session) *Event {
 			ProjectId: session.ProjectID,
 			SessionId: sessionID,
 			EventType: &eventType,
-			Timestamp: Ptr(time.Now()),
+			Timestamp: core.Ptr(time.Now()),
 		},
 	}
 
@@ -133,10 +122,6 @@ func CreateIdentifyEvent(session *core.Session) *Event {
 	return event
 }
 
-// Ptr is a helper function to get a pointer to a value.
-func Ptr[T any](v T) *T {
-	return &v
-}
 
 // LogEvent logs an event in a formatted, human-readable way for debugging.
 func LogEvent(logger interface{ Infof(string, ...any) }, evt *Event, title string) {

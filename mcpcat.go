@@ -2,13 +2,21 @@ package mcpcat
 
 import (
 	"context"
+	"errors"
 
+	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/event"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/publisher"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/redaction"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/registry"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/session"
+)
+
+// Sentinel errors for Track validation.
+var (
+	ErrNilServer      = errors.New("mcpcat: server must not be nil")
+	ErrEmptyProjectID = errors.New("mcpcat: projectID must not be empty")
 )
 
 // --- Integration API (used by mcpgo/ and officialsdk/ modules) ---
@@ -91,5 +99,5 @@ func ConvertToMap(v any) any {
 
 // Ptr returns a pointer to the given value. Convenience helper for integration modules.
 func Ptr[T any](v T) *T {
-	return &v
+	return core.Ptr(v)
 }

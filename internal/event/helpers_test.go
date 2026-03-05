@@ -460,13 +460,13 @@ func TestCreateIdentifyEvent(t *testing.T) {
 
 func TestPtr(t *testing.T) {
 	s := "hello"
-	p := Ptr(s)
+	p := core.Ptr(s)
 	if p == nil || *p != "hello" {
 		t.Errorf("Ptr() should return pointer to value, got %v", p)
 	}
 
 	i := 42
-	ip := Ptr(i)
+	ip := core.Ptr(i)
 	if ip == nil || *ip != 42 {
 		t.Errorf("Ptr() should return pointer to int, got %v", ip)
 	}

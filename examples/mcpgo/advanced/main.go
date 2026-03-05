@@ -49,7 +49,7 @@ var emailRegex = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z
 
 func main() {
 	s := server.NewMCPServer(
-		"echo-server",
+		"mcpgo-advanced-example",
 		"1.0.0",
 	)
 

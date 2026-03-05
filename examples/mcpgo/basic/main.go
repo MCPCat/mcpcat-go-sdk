@@ -45,7 +45,7 @@ func dangerousOperation(input string) error {
 
 func main() {
 	s := server.NewMCPServer(
-		"echo-server",
+		"mcpgo-basic-example",
 		"1.0.0",
 	)
 

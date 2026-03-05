@@ -1,16 +1,23 @@
 package mcpcat
 
-import "github.com/mcpcat/mcpcat-go-sdk/internal/core"
+import (
+	"time"
+
+	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
+	"github.com/mcpcat/mcpcat-go-sdk/internal/sessionmap"
+)
 
 type (
-	UserIdentity   = core.UserIdentity
-	Options        = core.Options
-	RedactFunc     = core.RedactFunc
-	Exporter       = core.Exporter
-	ExporterConfig = core.ExporterConfig
-	Event          = core.Event
-	MCPcatInstance = core.MCPcatInstance
-	Session        = core.Session
+	UserIdentity     = core.UserIdentity
+	Options          = core.Options
+	RedactFunc       = core.RedactFunc
+	Exporter         = core.Exporter
+	ExporterConfig   = core.ExporterConfig
+	Event            = core.Event
+	MCPcatInstance   = core.MCPcatInstance
+	Session          = core.Session
+	ProtectedSession = sessionmap.ProtectedSession
+	SessionMap       = sessionmap.SessionMap
 )
 
 type IDPrefix = core.IDPrefix
@@ -22,4 +29,10 @@ const (
 
 func DefaultOptions() Options {
 	return core.DefaultOptions()
+}
+
+// NewSessionMap creates a session map with TTL-based eviction.
+// If ttl is 0, a 30-minute default is used.
+func NewSessionMap(ttl time.Duration) *SessionMap {
+	return sessionmap.New(ttl)
 }

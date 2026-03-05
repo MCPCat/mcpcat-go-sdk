@@ -2,9 +2,11 @@ package officialsdk
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpcat "github.com/mcpcat/mcpcat-go-sdk"
 )
 
 func TestTrack_NilServer(t *testing.T) {
@@ -12,8 +14,8 @@ func TestTrack_NilServer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil server, got nil")
 	}
-	if err.Error() != "Track: mcpServer must not be nil" {
-		t.Fatalf("unexpected error message: %s", err.Error())
+	if !errors.Is(err, mcpcat.ErrNilServer) {
+		t.Fatalf("expected ErrNilServer, got: %v", err)
 	}
 }
 
@@ -25,8 +27,8 @@ func TestTrack_EmptyProjectID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty projectID, got nil")
 	}
-	if err.Error() != "Track: projectID must not be empty" {
-		t.Fatalf("unexpected error message: %s", err.Error())
+	if !errors.Is(err, mcpcat.ErrEmptyProjectID) {
+		t.Fatalf("expected ErrEmptyProjectID, got: %v", err)
 	}
 }
 

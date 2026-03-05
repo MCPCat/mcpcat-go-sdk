@@ -1,31 +1,20 @@
 package officialsdk
 
 import (
-	"sync"
-
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	mcpcat "github.com/mcpcat/mcpcat-go-sdk"
 )
 
-// protectedSession wraps a *mcpcat.Session with a mutex to protect concurrent
-// access to its fields, and a sync.Once to ensure the Identify callback is
-// invoked at most once per session.
-type protectedSession struct {
-	mu           sync.Mutex
-	sess         *mcpcat.Session
-	identifyOnce sync.Once
-}
-
 // getOrCreateSession extracts or creates session metadata from the request,
 // maintaining a session map keyed by the ServerSession ID.
-// It returns a *protectedSession that callers must lock before accessing fields.
+// It returns a *mcpcat.ProtectedSession that callers must lock before accessing fields.
 func getOrCreateSession(
 	req mcp.Request,
-	sessionMap *sync.Map,
+	sessionMap *mcpcat.SessionMap,
 	serverImpl *mcp.Implementation,
 	projectID string,
-) *protectedSession {
+) *mcpcat.ProtectedSession {
 	if req == nil {
 		return nil
 	}
@@ -42,69 +31,59 @@ func getOrCreateSession(
 
 	rawSessionID := serverSession.ID()
 	if rawSessionID == "" {
-		// If no session ID, use a placeholder key based on the pointer address.
-		// This ensures we still create a session for transports that don't
-		// provide a session ID.
 		rawSessionID = "nosessionid"
 	}
 
-	// Build a candidate session for LoadOrStore.
 	formattedSessionID := mcpcat.NewSessionID()
-	newPS := &protectedSession{
-		sess: &mcpcat.Session{
+	newPS := &mcpcat.ProtectedSession{
+		Sess: &mcpcat.Session{
 			SessionID: &formattedSessionID,
 			ProjectID: &projectID,
 		},
 	}
 
-	// LoadOrStore is atomic: if another goroutine stored first, we get that one.
-	actual, _ := sessionMap.LoadOrStore(rawSessionID, newPS)
-	ps := actual.(*protectedSession)
+	ps, _ := sessionMap.LoadOrStore(rawSessionID, newPS)
 
-	// Populate session fields under the lock.
-	ps.mu.Lock()
-	defer ps.mu.Unlock()
+	ps.Mu.Lock()
+	defer ps.Mu.Unlock()
 
-	// Set SDK information
-	if ps.sess.SdkLanguage == nil {
-		ps.sess.SdkLanguage = mcpcat.Ptr("modelcontextprotocol/go-sdk")
+	if ps.Sess.SdkLanguage == nil {
+		ps.Sess.SdkLanguage = mcpcat.Ptr("modelcontextprotocol/go-sdk")
 	}
 
-	if ps.sess.McpcatVersion == nil {
+	if ps.Sess.McpcatVersion == nil {
 		version := mcpcat.GetDependencyVersion("github.com/modelcontextprotocol/go-sdk")
-		ps.sess.McpcatVersion = &version
+		ps.Sess.McpcatVersion = &version
 	}
 
-	// Extract client info from ServerSession.InitializeParams()
-	if ps.sess.ClientName == nil {
+	if ps.Sess.ClientName == nil {
 		initParams := serverSession.InitializeParams()
 		if initParams != nil && initParams.ClientInfo != nil {
 			if initParams.ClientInfo.Name != "" {
-				ps.sess.ClientName = mcpcat.Ptr(initParams.ClientInfo.Name)
+				ps.Sess.ClientName = mcpcat.Ptr(initParams.ClientInfo.Name)
 			}
 			if initParams.ClientInfo.Version != "" {
-				ps.sess.ClientVersion = mcpcat.Ptr(initParams.ClientInfo.Version)
+				ps.Sess.ClientVersion = mcpcat.Ptr(initParams.ClientInfo.Version)
 			}
 		}
 	}
 
-	// Extract server info from the Implementation stored at Track() time
-	if ps.sess.ServerName == nil && serverImpl != nil {
+	if ps.Sess.ServerName == nil && serverImpl != nil {
 		if serverImpl.Name != "" {
-			ps.sess.ServerName = mcpcat.Ptr(serverImpl.Name)
+			ps.Sess.ServerName = mcpcat.Ptr(serverImpl.Name)
 		}
 		if serverImpl.Version != "" {
-			ps.sess.ServerVersion = mcpcat.Ptr(serverImpl.Version)
+			ps.Sess.ServerVersion = mcpcat.Ptr(serverImpl.Version)
 		}
 	}
 
+	ps.Touch()
 	return ps
 }
 
 // updateSessionFromInitResult updates the session with server info from the
-// initialize result. This is called when we observe an initialize response
-// flowing through the middleware. The caller must hold ps.mu.
-func updateSessionFromInitResult(ps *protectedSession, result mcp.Result) {
+// initialize result. The caller must hold ps.Mu.
+func updateSessionFromInitResult(ps *mcpcat.ProtectedSession, result mcp.Result) {
 	if ps == nil || result == nil {
 		return
 	}
@@ -112,12 +91,12 @@ func updateSessionFromInitResult(ps *protectedSession, result mcp.Result) {
 	if !ok || initResult == nil {
 		return
 	}
-	if ps.sess.ServerName == nil && initResult.ServerInfo != nil {
+	if ps.Sess.ServerName == nil && initResult.ServerInfo != nil {
 		if initResult.ServerInfo.Name != "" {
-			ps.sess.ServerName = mcpcat.Ptr(initResult.ServerInfo.Name)
+			ps.Sess.ServerName = mcpcat.Ptr(initResult.ServerInfo.Name)
 		}
 		if initResult.ServerInfo.Version != "" {
-			ps.sess.ServerVersion = mcpcat.Ptr(initResult.ServerInfo.Version)
+			ps.Sess.ServerVersion = mcpcat.Ptr(initResult.ServerInfo.Version)
 		}
 	}
 }

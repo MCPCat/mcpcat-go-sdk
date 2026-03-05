@@ -7,18 +7,15 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 )
 
-// mockServer is a simple mock server type for testing
 type mockServer struct {
 	name string
 }
 
-// TestRegister tests the Register function
 func TestRegister(t *testing.T) {
 	tests := []struct {
 		name     string
 		server   any
 		instance *core.MCPcatInstance
-		wantNil  bool
 	}{
 		{
 			name:   "register pointer server",
@@ -27,7 +24,6 @@ func TestRegister(t *testing.T) {
 				ProjectID: "proj1",
 				Options:   &core.Options{},
 			},
-			wantNil: false,
 		},
 		{
 			name:   "register another pointer server",
@@ -36,52 +32,49 @@ func TestRegister(t *testing.T) {
 				ProjectID: "proj2",
 				Options:   &core.Options{},
 			},
-			wantNil: false,
-		},
-		{
-			name:   "register nil server",
-			server: nil,
-			instance: &core.MCPcatInstance{
-				ProjectID: "proj3",
-				Options:   &core.Options{},
-			},
-			wantNil: false, // nil and non-pointers both map to pointer value 0 and can be stored
-		},
-		{
-			name:   "register non-pointer type",
-			server: mockServer{name: "test3"},
-			instance: &core.MCPcatInstance{
-				ProjectID: "proj4",
-				Options:   &core.Options{},
-			},
-			wantNil: false, // non-pointers map to pointer value 0 and can be stored
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear the registry before each test
 			clearRegistry()
 
 			Register(tt.server, tt.instance)
 			got := Get(tt.server)
 
-			if tt.wantNil {
-				if got != nil {
-					t.Errorf("Get() = %v, want nil", got)
-				}
-			} else {
-				if got == nil {
-					t.Error("Get() = nil, want non-nil")
-				} else if got.ProjectID != tt.instance.ProjectID {
-					t.Errorf("Get().ProjectID = %v, want %v", got.ProjectID, tt.instance.ProjectID)
-				}
+			if got == nil {
+				t.Error("Get() = nil, want non-nil")
+			} else if got.ProjectID != tt.instance.ProjectID {
+				t.Errorf("Get().ProjectID = %v, want %v", got.ProjectID, tt.instance.ProjectID)
 			}
 		})
 	}
 }
 
-// TestGet tests the Get function
+func TestRegister_PanicsOnNil(t *testing.T) {
+	clearRegistry()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Register(nil, ...) should panic")
+		}
+	}()
+
+	Register(nil, &core.MCPcatInstance{ProjectID: "proj"})
+}
+
+func TestRegister_PanicsOnNonPointer(t *testing.T) {
+	clearRegistry()
+
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Register(nonPointer, ...) should panic")
+		}
+	}()
+
+	Register(mockServer{name: "value"}, &core.MCPcatInstance{ProjectID: "proj"})
+}
+
 func TestGet(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -117,18 +110,10 @@ func TestGet(t *testing.T) {
 			},
 			wantNil: true,
 		},
-		{
-			name: "get non-pointer type",
-			setupFunc: func() any {
-				return mockServer{name: "nonpointer"}
-			},
-			wantNil: true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear the registry before each test
 			clearRegistry()
 
 			server := tt.setupFunc()
@@ -149,7 +134,6 @@ func TestGet(t *testing.T) {
 	}
 }
 
-// TestUnregister tests the Unregister function
 func TestUnregister(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -182,65 +166,50 @@ func TestUnregister(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clear the registry before each test
 			clearRegistry()
 
 			server := tt.setupFunc()
 			Unregister(server)
 
-			// After unregister, Get should return nil
-			got := Get(server)
-			if got != nil {
-				t.Errorf("Get() after Unregister() = %v, want nil", got)
-			}
-		})
-	}
-}
-
-// TestGetPointerValue tests the getPointerValue helper function
-func TestGetPointerValue(t *testing.T) {
-	server := &mockServer{name: "test"}
-
-	tests := []struct {
-		name     string
-		input    any
-		wantZero bool
-	}{
-		{
-			name:     "pointer type",
-			input:    server,
-			wantZero: false,
-		},
-		{
-			name:     "nil value",
-			input:    nil,
-			wantZero: true,
-		},
-		{
-			name:     "non-pointer type",
-			input:    mockServer{name: "test"},
-			wantZero: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getPointerValue(tt.input)
-
-			if tt.wantZero {
-				if got != 0 {
-					t.Errorf("getPointerValue() = %v, want 0", got)
-				}
-			} else {
-				if got == 0 {
-					t.Error("getPointerValue() = 0, want non-zero")
+			if server != nil {
+				got := Get(server)
+				if got != nil {
+					t.Errorf("Get() after Unregister() = %v, want nil", got)
 				}
 			}
 		})
 	}
 }
 
-// TestConcurrentAccess tests thread-safety of registry operations
+func TestMustBePointer(t *testing.T) {
+	t.Run("pointer type does not panic", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Errorf("mustBePointer panicked for pointer: %v", r)
+			}
+		}()
+		mustBePointer(&mockServer{name: "test"})
+	})
+
+	t.Run("nil panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("mustBePointer should panic for nil")
+			}
+		}()
+		mustBePointer(nil)
+	})
+
+	t.Run("non-pointer panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Error("mustBePointer should panic for non-pointer")
+			}
+		}()
+		mustBePointer(mockServer{name: "test"})
+	})
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	clearRegistry()
 
@@ -250,12 +219,10 @@ func TestConcurrentAccess(t *testing.T) {
 	var wg sync.WaitGroup
 	servers := make([]*mockServer, numGoroutines)
 
-	// Create servers
 	for i := 0; i < numGoroutines; i++ {
 		servers[i] = &mockServer{name: "test"}
 	}
 
-	// Concurrent Register operations
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
 		go func(idx int) {
@@ -270,7 +237,6 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Concurrent Get operations
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
 		go func(idx int) {
@@ -285,7 +251,6 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Concurrent Unregister operations
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
 		go func(idx int) {
@@ -295,7 +260,6 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Verify all servers are unregistered
 	for i, server := range servers {
 		if instance := Get(server); instance != nil {
 			t.Errorf("Server %d still registered after Unregister()", i)
@@ -303,7 +267,6 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 }
 
-// TestConcurrentMixedOperations tests concurrent mixed read/write operations
 func TestConcurrentMixedOperations(t *testing.T) {
 	clearRegistry()
 
@@ -315,11 +278,9 @@ func TestConcurrentMixedOperations(t *testing.T) {
 		servers[i] = &mockServer{name: "test"}
 	}
 
-	// Mix of Register, Get, and Unregister operations
 	wg.Add(numGoroutines * 3)
 
 	for i := 0; i < numGoroutines; i++ {
-		// Register goroutine
 		go func(idx int) {
 			defer wg.Done()
 			Register(servers[idx], &core.MCPcatInstance{
@@ -328,13 +289,11 @@ func TestConcurrentMixedOperations(t *testing.T) {
 			})
 		}(i)
 
-		// Get goroutine
 		go func(idx int) {
 			defer wg.Done()
 			Get(servers[idx])
 		}(i)
 
-		// Unregister goroutine
 		go func(idx int) {
 			defer wg.Done()
 			Unregister(servers[idx])
@@ -344,7 +303,6 @@ func TestConcurrentMixedOperations(t *testing.T) {
 	wg.Wait()
 }
 
-// TestRegistryLifecycle tests the full lifecycle of register -> get -> unregister
 func TestRegistryLifecycle(t *testing.T) {
 	clearRegistry()
 
@@ -354,13 +312,11 @@ func TestRegistryLifecycle(t *testing.T) {
 		Options:   &core.Options{},
 	}
 
-	// Step 1: Initially not registered
 	got := Get(server)
 	if got != nil {
 		t.Errorf("Step 1: Get() = %v, want nil", got)
 	}
 
-	// Step 2: Register
 	Register(server, instance)
 	got = Get(server)
 	if got == nil {
@@ -370,14 +326,12 @@ func TestRegistryLifecycle(t *testing.T) {
 		t.Errorf("Step 2: ProjectID = %v, want %v", got.ProjectID, instance.ProjectID)
 	}
 
-	// Step 3: Unregister
 	Unregister(server)
 	got = Get(server)
 	if got != nil {
 		t.Errorf("Step 3: Get() = %v, want nil", got)
 	}
 
-	// Step 4: Re-register
 	Register(server, instance)
 	got = Get(server)
 	if got == nil {
@@ -385,7 +339,6 @@ func TestRegistryLifecycle(t *testing.T) {
 	}
 }
 
-// TestMultipleServers tests registering multiple different servers
 func TestMultipleServers(t *testing.T) {
 	clearRegistry()
 
@@ -401,12 +354,10 @@ func TestMultipleServers(t *testing.T) {
 		{ProjectID: "proj3", Options: &core.Options{}},
 	}
 
-	// Register all servers
 	for i, server := range servers {
 		Register(server, instances[i])
 	}
 
-	// Verify all servers are registered correctly
 	for i, server := range servers {
 		got := Get(server)
 		if got == nil {
@@ -418,15 +369,12 @@ func TestMultipleServers(t *testing.T) {
 		}
 	}
 
-	// Unregister middle server
 	Unregister(servers[1])
 
-	// Verify server 1 is unregistered
 	if got := Get(servers[1]); got != nil {
 		t.Errorf("Server 1 after unregister: Get() = %v, want nil", got)
 	}
 
-	// Verify other servers are still registered
 	for _, idx := range []int{0, 2} {
 		got := Get(servers[idx])
 		if got == nil {
@@ -435,7 +383,6 @@ func TestMultipleServers(t *testing.T) {
 	}
 }
 
-// TestRegisterOverwrite tests that re-registering a server overwrites the previous instance
 func TestRegisterOverwrite(t *testing.T) {
 	clearRegistry()
 
@@ -451,14 +398,12 @@ func TestRegisterOverwrite(t *testing.T) {
 		Options:   &core.Options{},
 	}
 
-	// Register with instance1
 	Register(server, instance1)
 	got := Get(server)
 	if got == nil || got.ProjectID != "proj1" {
 		t.Error("First registration failed")
 	}
 
-	// Re-register with instance2
 	Register(server, instance2)
 	got = Get(server)
 	if got == nil {
@@ -469,9 +414,8 @@ func TestRegisterOverwrite(t *testing.T) {
 	}
 }
 
-// clearRegistry is a helper function to clear the registry between tests
 func clearRegistry() {
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	serverMCPcatMap = make(map[uintptr]*core.MCPcatInstance)
+	serverMCPcatMap = make(map[any]*core.MCPcatInstance)
 }

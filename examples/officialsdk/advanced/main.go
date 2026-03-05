@@ -66,7 +66,7 @@ type TextResult struct {
 func main() {
 	s := mcp.NewServer(
 		&mcp.Implementation{
-			Name:    "echo-server",
+			Name:    "officialsdk-advanced-example",
 			Version: "1.0.0",
 		},
 		nil,

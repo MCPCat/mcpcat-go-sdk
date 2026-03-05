@@ -263,7 +263,8 @@ func createFullTestServerWithTracking(t *testing.T, opts *Options) (*mcp.Server,
 	}
 	mcpcat.RegisterServer(server, instance)
 
-	middleware := newTrackingMiddleware(projectID, opts, mock.publish, serverImpl)
+	middleware, sessionMap := newTrackingMiddleware(projectID, opts, mock.publish, serverImpl)
+	defer sessionMap.Stop()
 	server.AddReceivingMiddleware(middleware)
 
 	registerGetMoreToolsIfEnabled(server, coreOpts)

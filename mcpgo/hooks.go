@@ -14,12 +14,10 @@ import (
 
 // addTracingToHooks registers MCPCat tracking hooks on the given Hooks struct.
 // It captures request timing, session metadata, event creation, and publishing.
-func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpcat.Event)) {
-	// Store request times in a closure-captured map
+// The caller must call Stop() on the returned SessionMap during shutdown.
+func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpcat.Event)) *mcpcat.SessionMap {
 	requestTimes := &sync.Map{}
-
-	// Session map for tracking sessions by raw session ID
-	sessionMap := &sync.Map{}
+	sessionMap := mcpcat.NewSessionMap(0)
 
 	// getDuration calculates the duration since the request started and cleans up.
 	getDuration := func(id any) *int32 {
@@ -30,8 +28,7 @@ func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpca
 		return nil
 	}
 
-	// captureSession extracts or creates session metadata from the mcp-go context.
-	captureSession := func(ctx context.Context, request any, response any) *protectedSession {
+	captureSession := func(ctx context.Context, request any, response any) *mcpcat.ProtectedSession {
 		return captureSessionFromContext(ctx, request, response, sessionMap, opts, publishFn)
 	}
 
@@ -85,9 +82,9 @@ func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpca
 		eventType := fmt.Sprintf("mcp:%s", string(method))
 
 		// Create event under lock (NewEvent reads session fields)
-		ps.mu.Lock()
-		evt := mcpcat.NewEvent(ps.sess, eventType, duration, isError, errorDetails)
-		ps.mu.Unlock()
+		ps.Mu.Lock()
+		evt := mcpcat.NewEvent(ps.Sess, eventType, duration, isError, errorDetails)
+		ps.Mu.Unlock()
 
 		if evt == nil {
 			return
@@ -133,13 +130,13 @@ func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpca
 
 		// Ensure identity fields are on the event if Identify just ran.
 		// NewEvent may have been called before Identify populated the session.
-		ps.mu.Lock()
-		if ps.sess.IdentifyActorGivenId != nil && evt.IdentifyActorGivenId == nil {
-			evt.IdentifyActorGivenId = ps.sess.IdentifyActorGivenId
-			evt.IdentifyActorName = ps.sess.IdentifyActorName
-			evt.IdentifyData = ps.sess.IdentifyData
+		ps.Mu.Lock()
+		if ps.Sess.IdentifyActorGivenId != nil && evt.IdentifyActorGivenId == nil {
+			evt.IdentifyActorGivenId = ps.Sess.IdentifyActorGivenId
+			evt.IdentifyActorName = ps.Sess.IdentifyActorName
+			evt.IdentifyData = ps.Sess.IdentifyData
 		}
-		ps.mu.Unlock()
+		ps.Mu.Unlock()
 
 		publishFn(evt)
 	})
@@ -156,9 +153,9 @@ func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpca
 		eventType := fmt.Sprintf("mcp:%s", string(method))
 
 		// Create event under lock (NewEvent reads session fields)
-		ps.mu.Lock()
-		evt := mcpcat.NewEvent(ps.sess, eventType, duration, true, err)
-		ps.mu.Unlock()
+		ps.Mu.Lock()
+		evt := mcpcat.NewEvent(ps.Sess, eventType, duration, true, err)
+		ps.Mu.Unlock()
 
 		if evt == nil {
 			return
@@ -198,14 +195,16 @@ func addTracingToHooks(hooks *server.Hooks, opts *Options, publishFn func(*mcpca
 		}
 
 		// Ensure identity fields are on the event if Identify just ran.
-		ps.mu.Lock()
-		if ps.sess.IdentifyActorGivenId != nil && evt.IdentifyActorGivenId == nil {
-			evt.IdentifyActorGivenId = ps.sess.IdentifyActorGivenId
-			evt.IdentifyActorName = ps.sess.IdentifyActorName
-			evt.IdentifyData = ps.sess.IdentifyData
+		ps.Mu.Lock()
+		if ps.Sess.IdentifyActorGivenId != nil && evt.IdentifyActorGivenId == nil {
+			evt.IdentifyActorGivenId = ps.Sess.IdentifyActorGivenId
+			evt.IdentifyActorName = ps.Sess.IdentifyActorName
+			evt.IdentifyData = ps.Sess.IdentifyData
 		}
-		ps.mu.Unlock()
+		ps.Mu.Unlock()
 
 		publishFn(evt)
 	})
+
+	return sessionMap
 }

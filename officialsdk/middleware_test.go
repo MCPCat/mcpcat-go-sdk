@@ -90,7 +90,8 @@ func createTestServer(t *testing.T, opts *Options) (*mcp.Server, *mcp.ClientSess
 	}
 	mcpcat.RegisterServer(server, instance)
 
-	middleware := newTrackingMiddleware(projectID, opts, mock.publish, serverImpl)
+	middleware, sessionMap := newTrackingMiddleware(projectID, opts, mock.publish, serverImpl)
+	defer sessionMap.Stop()
 	server.AddReceivingMiddleware(middleware)
 
 	// Register get_more_tools if enabled

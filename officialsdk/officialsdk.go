@@ -8,7 +8,6 @@ package officialsdk
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -60,10 +59,10 @@ func DefaultOptions() *Options {
 // multiple times. On error it returns (nil, err).
 func Track(mcpServer *mcp.Server, projectID string, opts *Options) (func(context.Context) error, error) {
 	if mcpServer == nil {
-		return nil, fmt.Errorf("Track: mcpServer must not be nil")
+		return nil, mcpcat.ErrNilServer
 	}
 	if projectID == "" {
-		return nil, fmt.Errorf("Track: projectID must not be empty")
+		return nil, mcpcat.ErrEmptyProjectID
 	}
 	if opts == nil {
 		opts = DefaultOptions()
@@ -90,7 +89,7 @@ func Track(mcpServer *mcp.Server, projectID string, opts *Options) (func(context
 	// We store a copy of the implementation info at Track() time.
 	serverImpl := getServerImpl(mcpServer)
 
-	middleware := newTrackingMiddleware(projectID, opts, publishFn, serverImpl)
+	middleware, sessionMap := newTrackingMiddleware(projectID, opts, publishFn, serverImpl)
 	mcpServer.AddReceivingMiddleware(middleware)
 
 	registerGetMoreToolsIfEnabled(mcpServer, coreOpts)
@@ -99,6 +98,7 @@ func Track(mcpServer *mcp.Server, projectID string, opts *Options) (func(context
 	shutdownFn := func(ctx context.Context) error {
 		var err error
 		once.Do(func() {
+			sessionMap.Stop()
 			err = mcpcat.Shutdown(ctx)
 		})
 		return err

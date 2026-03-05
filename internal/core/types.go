@@ -197,3 +197,8 @@ type MCPcatInstance struct {
 func DefaultOptions() Options {
 	return Options{}
 }
+
+// Ptr returns a pointer to the given value.
+func Ptr[T any](v T) *T {
+	return &v
+}

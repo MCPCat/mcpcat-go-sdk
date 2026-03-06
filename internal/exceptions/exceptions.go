@@ -295,7 +295,11 @@ func isStdlib(funcName string, filePath string) bool {
 	// Stdlib packages have no dots in the first segment of their import path.
 	firstSlash := strings.Index(pkg, "/")
 	if firstSlash < 0 {
-		// Single-segment packages like "main", "runtime", "fmt" are stdlib or builtins.
+		// "main" is user code, not stdlib.
+		if pkg == "main" {
+			return false
+		}
+		// Single-segment packages like "runtime", "fmt" are stdlib or builtins.
 		return !strings.Contains(pkg, ".")
 	}
 	firstSegment := pkg[:firstSlash]

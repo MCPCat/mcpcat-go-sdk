@@ -236,13 +236,13 @@ main.main()
 		t.Errorf("frame[1].abs_path = %q", f1["abs_path"])
 	}
 
-	// Third frame: main (builtin package, not in_app)
+	// Third frame: main (user code, in_app)
 	f2 := frames[2]
 	if f2["function"] != "main.main" {
 		t.Errorf("frame[2].function = %q", f2["function"])
 	}
-	if f2["in_app"] != false {
-		t.Error("main.main should not be in_app (builtin package)")
+	if f2["in_app"] != true {
+		t.Error("main.main should be in_app (user code)")
 	}
 }
 
@@ -291,8 +291,8 @@ func TestIsInApp(t *testing.T) {
 		// User code (third-party domain in import path = in_app)
 		{"github.com/mycompany/myapp/handler.ProcessTool", "/home/user/myapp/handler/tool.go", true},
 		{"github.com/mycompany/myapp/db.(*Client).Query", "/home/user/myapp/db/client.go", true},
-		// main is a builtin package (no dot in first segment) so it's treated as stdlib
-		{"main.main", "/home/user/myapp/main.go", false},
+		// main is user code
+		{"main.main", "/home/user/myapp/main.go", true},
 	}
 
 	for _, tt := range tests {
@@ -319,7 +319,7 @@ func TestIsStdlib(t *testing.T) {
 		{"stdlib by GOROOT", "runtime/debug.Stack", goroot + "/src/runtime/debug/stack.go", true},
 		{"stdlib by import path", "net/http.(*Server).Serve", goroot + "/src/net/http/server.go", true},
 		{"third-party", "github.com/foo/bar.Baz", "/home/user/go/src/github.com/foo/bar.go", false},
-		{"user main", "main.main", "/home/user/project/main.go", true}, // main is builtin
+		{"user main", "main.main", "/home/user/project/main.go", false}, // main is user code, not stdlib
 		{"fmt", "fmt.Sprintf", "/usr/local/go/src/fmt/print.go", true},
 	}
 

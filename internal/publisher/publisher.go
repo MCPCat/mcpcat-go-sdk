@@ -120,6 +120,9 @@ func (p *Publisher) publishEvent(event *core.Event, workerID int) {
 	_, resp, err := p.apiClient.EventsAPI.PublishEvent(ctx).
 		PublishEventRequest(event.PublishEventRequest).
 		Execute()
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 
 	if err != nil {
 		p.logger.Errorf("Worker %d failed to publish event: %v", workerID, err)

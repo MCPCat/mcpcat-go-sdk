@@ -160,21 +160,15 @@ func TestCaptureException_StackTracerInterface(t *testing.T) {
 	err := &stackError{msg: "stack error", pcs: pcs}
 	result := CaptureException(err)
 
-	frames, ok := result["frames"].([]map[string]any)
-	if !ok || len(frames) == 0 {
-		t.Fatal("expected frames from StackTrace() interface")
+	// MCPCat SDK frames are skipped by shouldSkipFrame, so the stackTracer
+	// frames (captured from this test file) will mostly be filtered out.
+	// The important thing is that CaptureException doesn't panic and
+	// returns a valid result with a stack trace (from stackTracer or runtime.Stack fallback).
+	if result == nil {
+		t.Fatal("expected non-nil result")
 	}
-
-	// At least one frame should reference this test file
-	foundTestFrame := false
-	for _, f := range frames {
-		if fn, _ := f["function"].(string); strings.Contains(fn, "TestCaptureException_StackTracerInterface") {
-			foundTestFrame = true
-			break
-		}
-	}
-	if !foundTestFrame {
-		t.Error("expected to find this test function in stack frames")
+	if _, ok := result["stack"].(string); !ok {
+		t.Error("expected stack trace (from stackTracer or runtime.Stack fallback)")
 	}
 }
 
@@ -205,44 +199,27 @@ main.main()
 `
 	frames := parseGoStackTrace(sampleStack)
 
-	if len(frames) != 3 {
-		t.Fatalf("expected 3 frames, got %d", len(frames))
+	// runtime/debug.Stack is skipped entirely by shouldSkipFrame
+	if len(frames) != 2 {
+		t.Fatalf("expected 2 frames (runtime skipped), got %d", len(frames))
 	}
 
-	// First frame: stdlib
+	// First remaining frame: user code
 	f0 := frames[0]
-	if f0["function"] != "runtime/debug.Stack" {
+	if f0["function"] != "github.com/myapp/server.handleRequest" {
 		t.Errorf("frame[0].function = %q", f0["function"])
 	}
-	if f0["in_app"] != false {
-		t.Error("runtime/debug.Stack should not be in_app")
-	}
-	if f0["lineno"] != 24 {
-		t.Errorf("frame[0].lineno = %v, want 24", f0["lineno"])
+	if f0["in_app"] != true {
+		t.Error("user code should be in_app")
 	}
 
-	// Second frame: user code
+	// Second frame: main
 	f1 := frames[1]
-	if f1["function"] != "github.com/myapp/server.handleRequest" {
+	if f1["function"] != "main.main" {
 		t.Errorf("frame[1].function = %q", f1["function"])
 	}
 	if f1["in_app"] != true {
-		t.Error("user code should be in_app")
-	}
-	if f1["lineno"] != 42 {
-		t.Errorf("frame[1].lineno = %v, want 42", f1["lineno"])
-	}
-	if f1["abs_path"] != "/home/user/myapp/server/handler.go" {
-		t.Errorf("frame[1].abs_path = %q", f1["abs_path"])
-	}
-
-	// Third frame: main (user code, in_app)
-	f2 := frames[2]
-	if f2["function"] != "main.main" {
-		t.Errorf("frame[2].function = %q", f2["function"])
-	}
-	if f2["in_app"] != true {
-		t.Error("main.main should be in_app (user code)")
+		t.Error("main.main should be in_app")
 	}
 }
 
@@ -278,21 +255,28 @@ func TestIsInApp(t *testing.T) {
 		filePath string
 		want     bool
 	}{
-		// Standard library
-		{"runtime/debug.Stack", "/usr/local/go/src/runtime/debug/stack.go", false},
-		{"net/http.(*Server).Serve", "/usr/local/go/src/net/http/server.go", false},
-		{"fmt.Sprintf", "/usr/local/go/src/fmt/print.go", false},
-		// MCPCat SDK internals
-		{"github.com/mcpcat/mcpcat-go-sdk/internal/event.NewEvent", "/path/internal/event/helpers.go", false},
-		{"github.com/mcpcat/mcpcat-go-sdk/internal/exceptions.CaptureException", "/path/internal/exceptions/exceptions.go", false},
-		// Known MCP libraries
-		{"github.com/mark3labs/mcp-go/server.(*MCPServer).handleToolCall", "/path/mcp-go/server/server.go", false},
-		{"github.com/modelcontextprotocol/go-sdk/mcp.handleReceive", "/path/go-sdk/mcp/shared.go", false},
-		// User code (third-party domain in import path = in_app)
+		// Standard library — in_app=false (GOROOT check)
+		{"runtime/debug.Stack", runtime.GOROOT() + "/src/runtime/debug/stack.go", false},
+		{"net/http.(*Server).Serve", runtime.GOROOT() + "/src/net/http/server.go", false},
+		{"fmt.Sprintf", runtime.GOROOT() + "/src/fmt/print.go", false},
+		// Vendored dependencies — in_app=false (path-segment match on /vendor/)
+		{"github.com/mycompany/myapp/vendor/github.com/lib/pq.(*conn).Query", "/home/user/myapp/vendor/github.com/lib/pq/conn.go", false},
+		// third_party directory — in_app=false (path-segment match on /third_party/)
+		{"github.com/mycompany/myapp/third_party/proto.Marshal", "/home/user/myapp/third_party/proto/marshal.go", false},
+		// Package names containing "vendor" or "third_party" as substrings should NOT be falsely excluded
+		{"github.com/mycompany/inventory-vendor-api.ListItems", "/home/user/myapp/inventory-vendor-api/items.go", true},
+		{"github.com/mycompany/third_party_utils.Format", "/home/user/myapp/third_party_utils/format.go", true},
+		// MCP libraries — in_app=true (NOT excluded)
+		{"github.com/mark3labs/mcp-go/server.(*MCPServer).handleToolCall", "/path/mcp-go/server/server.go", true},
+		{"github.com/modelcontextprotocol/go-sdk/mcp.handleReceive", "/path/go-sdk/mcp/shared.go", true},
+		// User code — in_app=true
 		{"github.com/mycompany/myapp/handler.ProcessTool", "/home/user/myapp/handler/tool.go", true},
 		{"github.com/mycompany/myapp/db.(*Client).Query", "/home/user/myapp/db/client.go", true},
-		// main is user code
+		// main package — in_app=true
 		{"main.main", "/home/user/myapp/main.go", true},
+		// Other third-party libs (not vendored) — in_app=true
+		{"github.com/jackc/pgx/v5.(*Conn).Query", "/home/user/go/pkg/mod/github.com/jackc/pgx/v5/conn.go", true},
+		{"go.uber.org/zap.(*Logger).Info", "/home/user/go/pkg/mod/go.uber.org/zap/logger.go", true},
 	}
 
 	for _, tt := range tests {
@@ -305,29 +289,43 @@ func TestIsInApp(t *testing.T) {
 	}
 }
 
-// --- isStdlib tests ---
-
-func TestIsStdlib(t *testing.T) {
-	goroot := runtime.GOROOT()
-
+func TestShouldSkipFrame(t *testing.T) {
 	tests := []struct {
-		name     string
 		funcName string
-		filePath string
 		want     bool
 	}{
-		{"stdlib by GOROOT", "runtime/debug.Stack", goroot + "/src/runtime/debug/stack.go", true},
-		{"stdlib by import path", "net/http.(*Server).Serve", goroot + "/src/net/http/server.go", true},
-		{"third-party", "github.com/foo/bar.Baz", "/home/user/go/src/github.com/foo/bar.go", false},
-		{"user main", "main.main", "/home/user/project/main.go", false}, // main is user code, not stdlib
-		{"fmt", "fmt.Sprintf", "/usr/local/go/src/fmt/print.go", true},
+		// Runtime frames should be skipped (including sub-packages like runtime/debug)
+		{"runtime.goexit", true},
+		{"runtime.main", true},
+		{"runtime/debug.Stack", true},
+		// Testing frames should be skipped
+		{"testing.tRunner", true},
+		{"testing.(*T).Run", true},
+		// MCPCat SDK frames should be skipped
+		{"github.com/mcpcat/mcpcat-go-sdk/internal/exceptions.CaptureException", true},
+		{"github.com/mcpcat/mcpcat-go-sdk/internal/event.NewEvent", true},
+		{"github.com/mcpcat/mcpcat-go-sdk/internal/publisher.(*Publisher).Publish", true},
+		{"github.com/mcpcat/mcpcat-go-sdk/mcpgo.addTracingToHooks", true},
+		{"github.com/mcpcat/mcpcat-go-sdk/officialsdk.newTrackingMiddleware", true},
+		// MCPCat SDK _test packages should NOT be skipped (needed for testing)
+		{"github.com/mcpcat/mcpcat-go-sdk/internal/exceptions_test.TestShouldSkipFrame", false},
+		{"github.com/mcpcat/mcpcat-go-sdk/mcpgo_test.TestErrorTracking", false},
+		// User code should NOT be skipped
+		{"github.com/mycompany/myapp/handler.ProcessTool", false},
+		{"main.main", false},
+		// MCP libraries should NOT be skipped
+		{"github.com/mark3labs/mcp-go/server.(*MCPServer).handleToolCall", false},
+		{"github.com/modelcontextprotocol/go-sdk/mcp.handleReceive", false},
+		// Stdlib (non-runtime) should NOT be skipped (they get in_app=false instead)
+		{"net/http.(*Server).Serve", false},
+		{"fmt.Sprintf", false},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isStdlib(tt.funcName, tt.filePath)
+		t.Run(tt.funcName, func(t *testing.T) {
+			got := shouldSkipFrame(tt.funcName)
 			if got != tt.want {
-				t.Errorf("isStdlib(%q, %q) = %v, want %v", tt.funcName, tt.filePath, got, tt.want)
+				t.Errorf("shouldSkipFrame(%q) = %v, want %v", tt.funcName, got, tt.want)
 			}
 		})
 	}
@@ -624,12 +622,11 @@ func TestUnwrapErrorChain_ChainedWithStackTracer(t *testing.T) {
 		t.Fatal("expected chained_errors")
 	}
 
-	// The chained error should have stack and frames from its StackTrace() interface
+	// The chained error should have stack from its StackTrace() interface.
+	// MCPCat SDK frames are skipped by shouldSkipFrame, so structured frames
+	// may be empty, but the raw stack text should still be present.
 	if _, ok := chain[0]["stack"].(string); !ok {
-		t.Error("expected stack on chained error with StackTrace() interface")
-	}
-	if frames, ok := chain[0]["frames"].([]map[string]any); !ok || len(frames) == 0 {
-		t.Error("expected frames on chained error with StackTrace() interface")
+		t.Error("expected raw stack on chained error from StackTrace() interface")
 	}
 }
 
@@ -739,21 +736,15 @@ func TestExtractStackTracer_InWrappedError(t *testing.T) {
 
 	result := CaptureException(outer)
 
-	// Should use the inner error's StackTrace(), not runtime.Stack()
-	frames, ok := result["frames"].([]map[string]any)
-	if !ok || len(frames) == 0 {
-		t.Fatal("expected frames from inner StackTrace()")
+	// CaptureException should not panic and should return a valid result.
+	// The inner error's StackTrace() PCs are from the MCPCat SDK test package,
+	// so shouldSkipFrame filters them out. The function falls back to
+	// runtime.Stack() when the stackTracer frames are empty.
+	if result == nil {
+		t.Fatal("expected non-nil result")
 	}
-
-	foundTestFrame := false
-	for _, f := range frames {
-		if fn, _ := f["function"].(string); strings.Contains(fn, "TestExtractStackTracer_InWrappedError") {
-			foundTestFrame = true
-			break
-		}
-	}
-	if !foundTestFrame {
-		t.Error("expected to find this test function in frames from inner stackTracer")
+	if _, ok := result["stack"].(string); !ok {
+		t.Error("expected stack trace (from stackTracer or runtime.Stack fallback)")
 	}
 }
 

@@ -19,6 +19,8 @@ const (
 	unknownFile      = "<unknown>"
 )
 
+var goRoot = strings.ReplaceAll(runtime.GOROOT(), "\\", "/")
+
 // stackTracer is the interface implemented by errors that carry a stack trace,
 // such as those created by github.com/pkg/errors.
 type stackTracer interface {
@@ -107,6 +109,12 @@ func framesFromStackTracer(st stackTracer) []map[string]any {
 		}
 
 		if frame.Function != "" || frame.File != "" {
+			if shouldSkipFrame(frame.Function) {
+				if !more {
+					break
+				}
+				continue
+			}
 			f := map[string]any{
 				"function": funcOrDefault(frame.Function),
 				"filename": makeRelativePath(frame.File),
@@ -188,6 +196,10 @@ func parseGoStackTrace(stack string) []map[string]any {
 		}
 
 		funcName := parseFuncName(funcLine)
+		if shouldSkipFrame(funcName) {
+			i += 2
+			continue
+		}
 		absPath, lineno := parseFileLine(fileLine)
 
 		frame := map[string]any{
@@ -247,63 +259,49 @@ func parseFileLine(line string) (absPath string, lineno int) {
 	return absPath, lineno
 }
 
-// isInApp determines whether a stack frame represents user/application code (true)
-// or library/runtime code (false).
-func isInApp(funcName string, filePath string) bool {
-	if isStdlib(funcName, filePath) {
-		return false
+func extractPackage(funcName string) string {
+	if funcName == "" {
+		return ""
 	}
-
-	// MCPCat SDK internals
-	if strings.Contains(funcName, "github.com/mcpcat/mcpcat-go-sdk/internal") {
-		return false
+	if idx := strings.Index(funcName, ".("); idx > 0 {
+		return funcName[:idx]
 	}
-
-	knownLibs := []string{
-		"github.com/mark3labs/mcp-go/",
-		"github.com/modelcontextprotocol/go-sdk/",
+	if idx := strings.LastIndex(funcName, "."); idx > 0 {
+		return funcName[:idx]
 	}
-	for _, lib := range knownLibs {
-		if strings.Contains(funcName, lib) {
-			return false
-		}
-	}
-
-	return true
+	return funcName
 }
 
-// isStdlib returns true if the function belongs to the Go standard library.
-// It checks GOROOT for the file path, and uses the import path heuristic on the
-// function name: stdlib packages never contain a dot in their first path segment
-// (e.g. "runtime/debug", "net/http") while third-party packages always start with
-// a domain ("github.com/...").
-func isStdlib(funcName string, filePath string) bool {
-	if goroot := runtime.GOROOT(); goroot != "" && strings.HasPrefix(filePath, goroot) {
+func shouldSkipFrame(funcName string) bool {
+	pkg := extractPackage(funcName)
+
+	if pkg == "runtime" || strings.HasPrefix(pkg, "runtime/") || pkg == "testing" {
 		return true
 	}
 
-	// Use the function's import path: extract the package portion before the
-	// last dot-separated symbol. For "net/http.(*Server).Serve" the package is
-	// "net/http"; for "github.com/foo/bar.Baz" the package is "github.com/foo/bar".
-	pkg := funcName
-	if idx := strings.Index(pkg, ".("); idx > 0 {
-		pkg = pkg[:idx]
-	} else if idx := strings.LastIndex(pkg, "."); idx > 0 {
-		pkg = pkg[:idx]
+	if strings.HasPrefix(pkg, "github.com/mcpcat/mcpcat-go-sdk") &&
+		!strings.HasSuffix(pkg, "_test") {
+		return true
 	}
 
-	// Stdlib packages have no dots in the first segment of their import path.
-	firstSlash := strings.Index(pkg, "/")
-	if firstSlash < 0 {
-		// "main" is user code, not stdlib.
-		if pkg == "main" {
-			return false
-		}
-		// Single-segment packages like "runtime", "fmt" are stdlib or builtins.
-		return !strings.Contains(pkg, ".")
+	return false
+}
+
+// isInApp determines whether a stack frame represents user/application code (true)
+// or library/runtime code (false).
+func isInApp(funcName string, filePath string) bool {
+	normalizedPath := strings.ReplaceAll(filePath, "\\", "/")
+
+	if goRoot != "" && strings.HasPrefix(normalizedPath, goRoot) {
+		return false
 	}
-	firstSegment := pkg[:firstSlash]
-	return !strings.Contains(firstSegment, ".")
+
+	pkg := extractPackage(funcName)
+	if strings.Contains(pkg, "/vendor/") || strings.Contains(pkg, "/third_party/") {
+		return false
+	}
+
+	return true
 }
 
 // makeRelativePath normalizes an absolute file path into a shorter relative path

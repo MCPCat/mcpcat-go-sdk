@@ -252,8 +252,8 @@ func TestHTTP_SessionMetadata(t *testing.T) {
 
 	evt := toolEvents[0]
 
-	if evt.SdkLanguage == nil || *evt.SdkLanguage != "modelcontextprotocol/go-sdk" {
-		t.Errorf("expected SDK language 'modelcontextprotocol/go-sdk', got %v", evt.SdkLanguage)
+	if evt.SdkLanguage == nil || *evt.SdkLanguage != "Go" {
+		t.Errorf("expected SDK language 'Go', got %v", evt.SdkLanguage)
 	}
 	if evt.ClientName == nil || *evt.ClientName != "http-test-client" {
 		t.Errorf("expected client name 'http-test-client', got %v", evt.ClientName)

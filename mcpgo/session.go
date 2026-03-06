@@ -49,11 +49,11 @@ func captureSessionFromContext(
 	}
 
 	if ps.Sess.SdkLanguage == nil {
-		ps.Sess.SdkLanguage = mcpcat.Ptr("mark3labs/mcp-go")
+		ps.Sess.SdkLanguage = mcpcat.Ptr("Go")
 	}
 
 	if ps.Sess.McpcatVersion == nil {
-		version := mcpcat.GetDependencyVersion("github.com/mark3labs/mcp-go")
+		version := mcpcat.GetDependencyVersion("github.com/mcpcat/mcpcat-go-sdk")
 		ps.Sess.McpcatVersion = &version
 	}
 

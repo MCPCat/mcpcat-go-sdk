@@ -51,14 +51,14 @@ func TestSession_NewSessionID(t *testing.T) {
 // ============================================================================
 
 func TestSession_FieldPopulation(t *testing.T) {
-	t.Run("sets SDK language to mark3labs/mcp-go", func(t *testing.T) {
+	t.Run("sets SDK language to Go", func(t *testing.T) {
 		session := &mcpcat.Session{}
 
 		// Simulate SDK language population
-		session.SdkLanguage = mcpcat.Ptr("mark3labs/mcp-go")
+		session.SdkLanguage = mcpcat.Ptr("Go")
 
-		if session.SdkLanguage == nil || *session.SdkLanguage != "mark3labs/mcp-go" {
-			t.Error("SDK language should be set to 'mark3labs/mcp-go'")
+		if session.SdkLanguage == nil || *session.SdkLanguage != "Go" {
+			t.Error("SDK language should be set to 'Go'")
 		}
 	})
 

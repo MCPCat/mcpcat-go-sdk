@@ -529,8 +529,8 @@ func TestMiddleware_CapturesSessionMetadata(t *testing.T) {
 	evt := toolEvents[0]
 
 	// Verify session metadata
-	if evt.SdkLanguage == nil || *evt.SdkLanguage != "modelcontextprotocol/go-sdk" {
-		t.Errorf("expected SDK language 'modelcontextprotocol/go-sdk', got %v", evt.SdkLanguage)
+	if evt.SdkLanguage == nil || *evt.SdkLanguage != "Go" {
+		t.Errorf("expected SDK language 'Go', got %v", evt.SdkLanguage)
 	}
 	if evt.ClientName == nil || *evt.ClientName != "test-client" {
 		t.Errorf("expected client name 'test-client', got %v", evt.ClientName)

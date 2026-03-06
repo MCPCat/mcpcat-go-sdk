@@ -2,16 +2,16 @@
 
 These examples show how to integrate MCPCat into MCP servers built with the two most popular Go MCP libraries.
 
-Each example is a standalone echo server with three tools (`echo`, `reverse`, `count_chars`) that runs over stdio.
+Each example is a standalone echo server with three tools (`echo`, `reverse`, `count_chars`) that runs over Streamable HTTP.
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| [mcpgo/basic](mcpgo/basic) | Minimal 3-line MCPCat integration with [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) |
-| [mcpgo/advanced](mcpgo/advanced) | Full MCPCat options (Identify, Redact, Debug) with mark3labs/mcp-go |
-| [officialsdk/basic](officialsdk/basic) | Minimal 3-line MCPCat integration with the [official Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk) |
-| [officialsdk/advanced](officialsdk/advanced) | Full MCPCat options (Identify, Redact, Debug) with the official Go MCP SDK |
+| Example | Port | Description |
+|---------|------|-------------|
+| [mcpgo/basic](mcpgo/basic) | 8081 | Minimal 3-line MCPCat integration with [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) |
+| [mcpgo/advanced](mcpgo/advanced) | 8082 | Full MCPCat options (Identify, Redact, Debug) with mark3labs/mcp-go |
+| [officialsdk/basic](officialsdk/basic) | 8083 | Minimal 3-line MCPCat integration with the [official Go MCP SDK](https://github.com/modelcontextprotocol/go-sdk) |
+| [officialsdk/advanced](officialsdk/advanced) | 8084 | Full MCPCat options (Identify, Redact, Debug) with the official Go MCP SDK |
 
 ## Running an Example
 
@@ -22,15 +22,13 @@ cd examples/mcpgo/basic
 go run .
 ```
 
-The server communicates over stdin/stdout using the MCP JSON-RPC protocol. To use it with an MCP client, point the client at the example binary. For instance, in a Claude Desktop `claude_desktop_config.json`:
+The server starts on its configured port (see table above) and accepts Streamable HTTP connections at `/mcp`. To use it with an MCP client, point the client at the URL. For instance, in a Claude Desktop `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "echo": {
-      "command": "go",
-      "args": ["run", "."],
-      "cwd": "/path/to/mcpcat-go-sdk/examples/mcpgo/basic"
+      "url": "http://localhost:8081/mcp"
     }
   }
 }
@@ -41,20 +39,7 @@ The server communicates over stdin/stdout using the MCP JSON-RPC protocol. To us
 Add the server to your Claude Code configuration by running:
 
 ```bash
-claude mcp add echo-server -- go run /path/to/mcpcat-go-sdk/examples/mcpgo/basic
-```
-
-Or add it manually to your `.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "echo-server": {
-      "command": "go",
-      "args": ["run", "/path/to/mcpcat-go-sdk/examples/mcpgo/basic"]
-    }
-  }
-}
+claude mcp add echo-server http://localhost:8081/mcp
 ```
 
 ## What the Examples Demonstrate
@@ -110,5 +95,5 @@ You can also pass it inline when configuring an MCP client:
 
 ## Prerequisites
 
-- Go 1.23+ (mcp-go examples) or Go 1.24+ (official go-sdk examples)
+- Go 1.24+
 - A MCPCat project ID from [mcpcat.io](https://mcpcat.io) — set via `MCPCAT_PROJECT_ID` env var or edit the fallback in the code

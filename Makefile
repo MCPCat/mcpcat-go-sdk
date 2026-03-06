@@ -1,4 +1,4 @@
-.PHONY: all test test-mcpgo test-officialsdk fmt fmt-check vet build build-examples tidy clean coverage check lint help run-examples stop-examples
+.PHONY: all test test-mcpgo test-officialsdk fmt fmt-check vet build build-examples tidy clean coverage check lint help run-examples stop-examples install-hooks
 
 MODULES := . ./mcpgo ./officialsdk \
 	./examples/mcpgo/basic ./examples/mcpgo/advanced \
@@ -107,6 +107,11 @@ stop-examples:
 	@-kill $$(lsof -ti:8084) 2>/dev/null
 	@echo "Done."
 
+# Install git hooks
+install-hooks:
+	@git config core.hooksPath hooks
+	@echo "Git hooks installed (using hooks/ directory)."
+
 # Show help
 help:
 	@echo "Available targets:"
@@ -126,4 +131,5 @@ help:
 	@echo "  make check            - Run all checks (format check, vet, test)"
 	@echo "  make run-examples     - Build & start all example servers"
 	@echo "  make stop-examples    - Stop all example servers"
+	@echo "  make install-hooks    - Install git hooks from hooks/ directory"
 	@echo "  make help             - Show this help message"

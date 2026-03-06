@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/mark3labs/mcp-go v0.44.1
-	github.com/mcpcat/mcpcat-go-sdk/mcpgo v0.0.0
+	github.com/mcpcat/mcpcat-go-sdk/mcpgo v0.3.0
 )
 
 require (
@@ -16,7 +16,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/mcpcat/mcpcat-go-api v0.1.7 // indirect
-	github.com/mcpcat/mcpcat-go-sdk v0.0.0 // indirect
+	github.com/mcpcat/mcpcat-go-sdk v0.3.0 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect

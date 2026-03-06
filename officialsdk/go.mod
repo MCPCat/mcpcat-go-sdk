@@ -3,7 +3,7 @@ module github.com/mcpcat/mcpcat-go-sdk/officialsdk
 go 1.24.0
 
 require (
-	github.com/mcpcat/mcpcat-go-sdk v0.0.0
+	github.com/mcpcat/mcpcat-go-sdk v0.3.0
 	github.com/modelcontextprotocol/go-sdk v1.4.0
 )
 

@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/mark3labs/mcp-go v0.44.1
-	github.com/mcpcat/mcpcat-go-sdk v0.0.0
+	github.com/mcpcat/mcpcat-go-sdk v0.3.0
 )
 
 require (

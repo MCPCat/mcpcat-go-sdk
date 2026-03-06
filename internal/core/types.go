@@ -1,10 +1,8 @@
 package core
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/mark3labs/mcp-go/server"
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
 )
 
@@ -19,9 +17,6 @@ type UserIdentity struct {
 	// UserData contains additional user data as key-value pairs
 	UserData map[string]any `json:"userData,omitempty"`
 }
-
-// IdentifyFunc identifies users and attaches custom data to their sessions
-type IdentifyFunc func(context context.Context, request any) *UserIdentity
 
 // RedactFunc redacts sensitive information from text before it is sent upstream
 type RedactFunc func(text string) string
@@ -41,25 +36,18 @@ type ExporterConfig struct {
 
 // Options configures the MCPCat tracking behavior.
 type Options struct {
-	// Hooks provides pre-existing server hooks to append MCPCat's hooks to.
-	// If nil, MCPCat creates and applies new hooks automatically.
-	// Use this when your server already has hooks configured.
-	Hooks *server.Hooks
+	// DisableReportMissing, when true, prevents the automatic "get_more_tools"
+	// tool from being registered. By default (false) the tool is added so LLMs
+	// can report missing functionality.
+	DisableReportMissing bool
 
-	// EnableReportMissing adds a "get_more_tools" tool that allows LLMs to
-	// automatically report missing functionality.
-	EnableReportMissing bool
-
-	// EnableToolCallContext injects a "context" parameter to existing tools
-	// to capture user intent.
-	EnableToolCallContext bool
+	// DisableToolCallContext, when true, prevents the "context" parameter from
+	// being injected into existing tools. By default (false) the parameter is
+	// added to capture user intent.
+	DisableToolCallContext bool
 
 	// Debug enables debug logging to ~/mcpcat.log. When false, no logging occurs.
 	Debug bool
-
-	// Identify is an async function to identify users and attach custom data
-	// to their sessions.
-	Identify IdentifyFunc
 
 	// RedactSensitiveInformation redacts sensitive data before sending to MCPCat.
 	RedactSensitiveInformation RedactFunc
@@ -205,14 +193,12 @@ type MCPcatInstance struct {
 }
 
 // DefaultOptions returns the default options for tracking.
+// All features are enabled by default (Disable* fields are false).
 func DefaultOptions() Options {
-	return Options{
-		Hooks:                      nil,
-		EnableReportMissing:        true,
-		EnableToolCallContext:      true,
-		Debug:                      false,
-		Identify:                   nil,
-		RedactSensitiveInformation: nil,
-		Exporters:                  nil,
-	}
+	return Options{}
+}
+
+// Ptr returns a pointer to the given value.
+func Ptr[T any](v T) *T {
+	return &v
 }

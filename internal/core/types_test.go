@@ -10,20 +10,16 @@ import (
 func TestDefaultOptions(t *testing.T) {
 	opts := DefaultOptions()
 
-	if !opts.EnableReportMissing {
-		t.Error("Expected EnableReportMissing to be true by default")
+	if opts.DisableReportMissing {
+		t.Error("Expected DisableReportMissing to be false by default")
 	}
 
-	if !opts.EnableToolCallContext {
-		t.Error("Expected EnableToolCallContext to be true by default")
+	if opts.DisableToolCallContext {
+		t.Error("Expected DisableToolCallContext to be false by default")
 	}
 
 	if opts.Debug {
 		t.Error("Expected Debug to be false by default")
-	}
-
-	if opts.Identify != nil {
-		t.Error("Expected Identify to be nil by default")
 	}
 
 	if opts.RedactSensitiveInformation != nil {
@@ -282,6 +278,23 @@ func TestExporterConfig(t *testing.T) {
 
 	if len(config.Config) != 2 {
 		t.Errorf("Expected 2 items in Config, got %d", len(config.Config))
+	}
+}
+
+func TestPtr(t *testing.T) {
+	s := Ptr("hello")
+	if *s != "hello" {
+		t.Errorf("Ptr(\"hello\") = %q, want \"hello\"", *s)
+	}
+
+	n := Ptr(42)
+	if *n != 42 {
+		t.Errorf("Ptr(42) = %d, want 42", *n)
+	}
+
+	b := Ptr(true)
+	if *b != true {
+		t.Errorf("Ptr(true) = %v, want true", *b)
 	}
 }
 

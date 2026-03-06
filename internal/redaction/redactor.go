@@ -1,45 +1,23 @@
 package redaction
 
 import (
-	"fmt"
-
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 )
 
 const redactionErrorPlaceholder = "[REDACTION_ERROR]"
 
 // RedactEvent applies the redaction function to all string values in the event's
-// Parameters, Response, and UserIntent fields. It recursively descends into nested maps and slices.
-// If the redaction function panics, the string is replaced with [REDACTION_ERROR].
-// If redaction fails completely, the Parameters and Response are replaced with error messages
-// to prevent publishing unredacted sensitive data.
+// Parameters, Response, UserIntent, and Error fields. It recursively descends
+// into nested maps and slices. If the user-provided redaction function panics
+// on a particular string, that string is replaced with [REDACTION_ERROR] (via
+// safeRedact) rather than crashing the publisher.
 //
 // This function creates a deep copy of the maps to avoid mutating the original event.
-func RedactEvent(event *core.Event, redactFn core.RedactFunc) (err error) {
+func RedactEvent(event *core.Event, redactFn core.RedactFunc) error {
 	if event == nil || redactFn == nil {
 		return nil
 	}
 
-	// Catch any panics during redaction to ensure we never crash the publisher
-	// but also ensure we never publish unredacted sensitive data
-	defer func() {
-		if r := recover(); r != nil {
-			// Redaction failed catastrophically - replace with error placeholders for security
-			event.Parameters = map[string]any{
-				"error": "Failed to redact parameters due to internal error",
-			}
-			event.Response = map[string]any{
-				"error": "Failed to redact response due to internal error",
-			}
-			if event.UserIntent != nil {
-				redactedIntent := redactionErrorPlaceholder
-				event.UserIntent = &redactedIntent
-			}
-			err = fmt.Errorf("redaction panic: %v", r)
-		}
-	}()
-
-	// Redact Parameters map
 	if event.Parameters != nil {
 		event.Parameters = redactMap(event.Parameters, redactFn)
 	}
@@ -53,6 +31,11 @@ func RedactEvent(event *core.Event, redactFn core.RedactFunc) (err error) {
 	if event.UserIntent != nil && *event.UserIntent != "" {
 		redacted := safeRedact(*event.UserIntent, redactFn)
 		event.UserIntent = &redacted
+	}
+
+	// Redact Error map (message and stack traces can contain sensitive data)
+	if event.Error != nil {
+		event.Error = redactMap(event.Error, redactFn)
 	}
 
 	return nil

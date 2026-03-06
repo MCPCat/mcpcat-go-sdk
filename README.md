@@ -43,196 +43,122 @@ Use MCPcat for:
 
 <img width="1274" height="770" alt="mcpcat-diagram" src="https://github.com/user-attachments/assets/2d75de19-5b69-4f8b-aea9-43161de5a2ba" />
 
+## Supported MCP Libraries
+
+MCPcat provides first-class support for the two most popular Go MCP libraries:
+
+| Library | Install |
+|---------|---------|
+| [mcp-go](https://github.com/mark3labs/mcp-go) (mark3labs) | `go get github.com/mcpcat/mcpcat-go-sdk/mcpgo` |
+| [go-sdk](https://github.com/modelcontextprotocol/go-sdk) (official) | `go get github.com/mcpcat/mcpcat-go-sdk/officialsdk` |
+
+Import the package that matches the MCP library you're already using. Both expose the same `Track()` API and share the same feature set.
 
 ## Getting Started
 
-To get started with MCPcat, first create an account and obtain your project ID by signing up at [mcpcat.io](https://mcpcat.io). For detailed setup instructions visit our [documentation](https://docs.mcpcat.io).
+Create an account and obtain your project ID at [mcpcat.io](https://mcpcat.io). For detailed setup instructions visit our [documentation](https://docs.mcpcat.io).
 
-Once you have your project ID, integrate MCPcat into your MCP server:
+Add one `Track()` call before starting your server:
 
+**mark3labs/mcp-go:**
 ```go
-package main
+import mcpcat "github.com/mcpcat/mcpcat-go-sdk/mcpgo"
 
-import (
-    "context"
-    "fmt"
-
-    "github.com/mark3labs/mcp-go/mcp"
-    "github.com/mark3labs/mcp-go/server"
-    mcpcat "github.com/mcpcat/mcpcat-go-sdk"
-)
-
-func main() {
-    // Optional but recommended: ensures graceful shutdown on normal exit
-    defer mcpcat.Shutdown()
-
-    s := server.NewMCPServer(
-        "Demo Server",
-        "1.0.0",
-        server.WithToolCapabilities(false),
-    )
-
-    // Track your MCP server with MCPcat — one line setup
-    if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", nil); err != nil {
-        fmt.Printf("Failed to setup tracking: %v\n", err)
-        return
-    }
-
-    // Add your tools and start the server
-    tool := mcp.NewTool("hello_world",
-        mcp.WithDescription("Say hello to someone"),
-        mcp.WithString("name",
-            mcp.Required(),
-            mcp.Description("Name of the person to greet"),
-        ),
-    )
-
-    s.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-        name, err := request.RequireString("name")
-        if err != nil {
-            return mcp.NewToolResultError(err.Error()), nil
-        }
-        return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", name)), nil
-    })
-
-    if err := server.ServeStdio(s); err != nil {
-        fmt.Printf("Server error: %v\n", err)
-    }
-}
+shutdown, err := mcpcat.Track(mcpServer, "proj_YOUR_PROJECT_ID", nil)
+if err != nil { /* handle error */ }
+defer shutdown(context.Background())
 ```
 
-Get your project ID by signing up at [mcpcat.io](https://mcpcat.io).
+**Official go-sdk:**
+```go
+import mcpcat "github.com/mcpcat/mcpcat-go-sdk/officialsdk"
+
+shutdown, err := mcpcat.Track(mcpServer, "proj_YOUR_PROJECT_ID", nil)
+if err != nil { /* handle error */ }
+defer shutdown(context.Background())
+```
+
+`Track()` returns a shutdown function — call it before your application exits to flush all queued events.
 
 ## Advanced Features
 
 ### User Identification
 
-You can identify your user sessions with a simple callback MCPcat exposes, called `Identify`.
+Identify your user sessions with a callback to attach user information to every event in a session.
 
+**mark3labs/mcp-go:**
 ```go
-func identifyUser(ctx context.Context, request any) *mcpcat.UserIdentity {
-    // Extract user info from your authentication system
-    return &mcpcat.UserIdentity{
-        UserID:   "user_12345",
-        UserName: "demo_user",
-        UserData: map[string]any{
-            "email":        "demo@example.com",
-            "role":         "developer",
-            "organization": "Example Corp",
-        },
-    }
-}
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    mcpcat "github.com/mcpcat/mcpcat-go-sdk/mcpgo"
+)
 
-if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
-    Identify: identifyUser,
-}); err != nil {
-    fmt.Printf("Failed to setup tracking: %v\n", err)
-    return
-}
+shutdown, err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    Identify: func(ctx context.Context, req *mcp.CallToolRequest) *mcpcat.UserIdentity {
+        return &mcpcat.UserIdentity{
+            UserID: "user_12345", UserName: "demo_user",
+            UserData: map[string]any{"email": "demo@example.com"},
+        }
+    },
+})
+```
+
+**Official go-sdk:**
+```go
+import (
+    "github.com/modelcontextprotocol/go-sdk/mcp"
+    mcpcat "github.com/mcpcat/mcpcat-go-sdk/officialsdk"
+)
+
+shutdown, err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    Identify: func(ctx context.Context, req *mcp.CallToolRequest) *mcpcat.UserIdentity {
+        return &mcpcat.UserIdentity{
+            UserID: "user_12345", UserName: "demo_user",
+            UserData: map[string]any{"email": "demo@example.com"},
+        }
+    },
+})
 ```
 
 ### Sensitive Data Redaction
 
-MCPcat redacts all data sent to its servers and encrypts at rest, but for additional security, it offers a hook to do your own redaction on all text data returned back to our servers.
+MCPcat redacts all data sent to its servers and encrypts at rest, but for additional security, it offers a hook to do your own redaction on all text data before it leaves your server.
 
 ```go
-import "regexp"
-
-func redactSensitiveData(text string) string {
-    // Redact email addresses
-    emailRegex := regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b`)
-    text = emailRegex.ReplaceAllString(text, "[REDACTED_EMAIL]")
-
-    // Redact credit card numbers
-    ccRegex := regexp.MustCompile(`\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b`)
-    text = ccRegex.ReplaceAllString(text, "[REDACTED_CC]")
-
-    // Redact API keys
-    apiKeyRegex := regexp.MustCompile(`\b[A-Za-z0-9]{32,}\b`)
-    text = apiKeyRegex.ReplaceAllString(text, "[REDACTED_KEY]")
-
-    return text
-}
-
-if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
-    RedactSensitiveInformation: redactSensitiveData,
-}); err != nil {
-    fmt.Printf("Failed to setup tracking: %v\n", err)
-    return
-}
+shutdown, err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
+    RedactSensitiveInformation: func(text string) string {
+        return emailRegex.ReplaceAllString(text, "[REDACTED]")
+    },
+})
 ```
 
 ### Debug Mode
 
-Enable debug logging for troubleshooting:
+Enable debug logging for troubleshooting. Debug logs are written to `~/mcpcat.log`.
 
 ```go
-if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
-    Debug: true,
-}); err != nil {
-    fmt.Printf("Failed to setup tracking: %v\n", err)
-    return
-}
+shutdown, err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{Debug: true})
 ```
 
-Debug logs are written to `~/mcpcat.log`.
-
-### Graceful Shutdown
-
-Ensure all queued events are published before your application exits:
-
-```go
-func main() {
-    defer mcpcat.Shutdown()
-
-    // Your server setup and execution...
-}
-```
-
-### Using with Existing Hooks
+### Using with Existing Hooks (mcp-go only)
 
 If your server already uses mcp-go hooks, pass them via `Options.Hooks` and MCPCat will append its hooks alongside yours:
 
 ```go
-hooks := &server.Hooks{}
-hooks.AddBeforeCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest) {
-    log.Printf("Tool called: %s", message.Params.Name)
-})
-
-s := server.NewMCPServer("My Server", "1.0.0")
-
-if err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{
-    Hooks: hooks,
-}); err != nil {
-    fmt.Printf("Failed to setup tracking: %v\n", err)
-    return
-}
+shutdown, err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{Hooks: hooks})
 ```
 
 ## Configuration Options
 
-```go
-type Options struct {
-    // Pre-existing server hooks to append MCPCat's hooks to.
-    // If nil, MCPCat creates and applies new hooks automatically.
-    Hooks *server.Hooks
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `DisableReportMissing` | `bool` | `false` | When `true`, prevents the `get_more_tools` tool from being registered |
+| `DisableToolCallContext` | `bool` | `false` | When `true`, prevents the `context` parameter from being injected on tool calls |
+| `Debug` | `bool` | `false` | Enable debug logging to `~/mcpcat.log` |
+| `RedactSensitiveInformation` | `func(string) string` | `nil` | Custom redaction applied to all text data before sending |
+| `Identify` | callback | `nil` | Attach user information to sessions |
+| `Hooks` | `*server.Hooks` | `nil` | Pre-existing hooks to merge with (mcp-go only) |
 
-    // Adds a "get_more_tools" tool for LLMs to report missing functionality.
-    EnableReportMissing bool  // default: true
-
-    // Injects a "context" parameter to capture user intent on tool calls.
-    EnableToolCallContext bool  // default: true
-
-    // Enable debug logging to ~/mcpcat.log
-    Debug bool
-
-    // Identify function to attach user information to sessions
-    Identify func(ctx context.Context, request any) *UserIdentity
-
-    // Redact function to sanitize sensitive data before sending
-    RedactSensitiveInformation func(text string) string
-}
-```
 ## Free for open source
 
 MCPcat is free for qualified open source projects. We believe in supporting the ecosystem that makes MCP possible. If you maintain an open source MCP server, you can access our full analytics platform at no cost.

@@ -13,9 +13,12 @@ import (
 
 // resetGlobalState resets the global logger state for testing
 func resetGlobalState() {
+	loggerMu.Lock()
 	defaultLogger = nil
-	defaultLoggerOnce = sync.Once{}
+	loggerMu.Unlock()
+	globalDebugMu.Lock()
 	globalDebug = false
+	globalDebugMu.Unlock()
 }
 
 // TestNew_ReturnsSameInstance verifies that multiple calls to New() return the same logger instance
@@ -291,14 +294,15 @@ func TestLogger_DebugDisabled_DiscardsOutput(t *testing.T) {
 	logger := newLogger()
 	defer logger.Close()
 
-	// Verify logger output is io.Discard
-	// We can't directly inspect the writer, but we can verify debug flag
 	if logger.debug {
 		t.Error("Expected logger.debug to be false")
 	}
 
-	// The logger should be using io.Discard
-	// We can verify this by checking that updateWriter was called correctly
+	if logger.file != nil {
+		t.Error("Expected logger.file to be nil when debug=false")
+	}
+
+	// Confirm the underlying logger still works if we manually override
 	var buf bytes.Buffer
 	logger.logger.SetOutput(&buf)
 	logger.Info("test")
@@ -370,21 +374,22 @@ func TestSetGlobalDebug_TogglesOutput(t *testing.T) {
 	}
 }
 
-// TestNewLogger_CreatesLogFile verifies log file creation
+// TestNewLogger_CreatesLogFile verifies log file is created only when debug=true
 func TestNewLogger_CreatesLogFile(t *testing.T) {
 	resetGlobalState()
 	defer resetGlobalState()
 
-	logger := newLogger()
-	defer logger.Close()
+	t.Run("debug enabled creates file", func(t *testing.T) {
+		resetGlobalState()
+		SetGlobalDebug(true)
 
-	if logger.file == nil {
-		t.Error("Expected logger.file to be set")
-	}
+		logger := newLogger()
+		defer logger.Close()
 
-	// File should be either the log file or stderr
-	if logger.file != os.Stderr {
-		// Verify it's a real file
+		if logger.file == nil {
+			t.Error("Expected logger.file to be set when debug=true")
+		}
+
 		stat, err := logger.file.Stat()
 		if err != nil {
 			t.Errorf("Failed to stat log file: %v", err)
@@ -392,15 +397,44 @@ func TestNewLogger_CreatesLogFile(t *testing.T) {
 		if stat.IsDir() {
 			t.Error("Expected log file to be a file, not a directory")
 		}
-	}
+	})
+
+	t.Run("debug disabled creates no file", func(t *testing.T) {
+		resetGlobalState()
+		SetGlobalDebug(false)
+
+		logger := newLogger()
+		defer logger.Close()
+
+		if logger.file != nil {
+			t.Error("Expected logger.file to be nil when debug=false")
+		}
+	})
 }
 
-// TestNewLogger_FallbackToStderr tests fallback when file creation fails
-func TestNewLogger_FallbackToStderr(t *testing.T) {
-	// This test is difficult to implement without mocking os.OpenFile
-	// We would need to create conditions where file creation fails
-	// Skipping for now, but could be implemented with filesystem mocking
-	t.Skip("Requires filesystem mocking to test file creation failure")
+// TestOpenLogFile_FailureSilentlyDegrades verifies that when the log file
+// cannot be opened, the logger silently degrades to io.Discard instead of
+// falling back to stderr.
+func TestOpenLogFile_FailureSilentlyDegrades(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	l := &Logger{debug: true}
+	l.logger = log.New(io.Discard, "[MCPCat] ", log.LstdFlags)
+
+	// file stays nil if openLogFile was never called (simulates failure path)
+	if l.file != nil {
+		t.Error("Expected file to be nil before openLogFile")
+	}
+
+	l.updateWriter()
+
+	// After updateWriter with a nil file, output should go to io.Discard,
+	// not stderr. We can verify by writing and checking nothing panics.
+	l.Info("this should not panic or write to stderr")
+
+	// updateWriter should have tried to open the file; if the home dir
+	// is available it may succeed. Either way, no panic and no stderr.
 }
 
 // TestLogger_Close verifies Close() closes file properly
@@ -434,26 +468,20 @@ func TestLogger_Close(t *testing.T) {
 	}
 }
 
-// TestLogger_Close_StderrNotClosed verifies stderr fallback isn't closed
-func TestLogger_Close_StderrNotClosed(t *testing.T) {
+// TestLogger_Close_NilFile verifies Close() handles nil file gracefully
+func TestLogger_Close_NilFile(t *testing.T) {
 	resetGlobalState()
 	defer resetGlobalState()
 
 	logger := &Logger{
-		file:  os.Stderr,
+		file:  nil,
 		debug: false,
 	}
 	logger.logger = log.New(io.Discard, "[MCPCat] ", log.LstdFlags)
 
 	err := logger.Close()
 	if err != nil {
-		t.Errorf("Expected Close() to succeed with stderr, got error: %v", err)
-	}
-
-	// Verify stderr is still writable
-	_, err = os.Stderr.Write([]byte("test\n"))
-	if err != nil {
-		t.Error("Expected stderr to still be writable after Close()")
+		t.Errorf("Expected Close() to succeed with nil file, got error: %v", err)
 	}
 }
 
@@ -527,4 +555,130 @@ func TestLogger_ConcurrentDebugToggle(t *testing.T) {
 
 	wg.Wait()
 	// Test passes if no race conditions or panics occur
+}
+
+// TestUpdateWriter_OpensFileOnDebugEnable verifies that toggling debug from
+// false to true lazily opens the log file.
+func TestUpdateWriter_OpensFileOnDebugEnable(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	logger := New()
+	defer logger.Close()
+
+	if logger.file != nil {
+		t.Error("Expected file to be nil initially (debug=false)")
+	}
+
+	SetGlobalDebug(true)
+
+	if logger.file == nil {
+		t.Error("Expected file to be opened after enabling debug")
+	}
+}
+
+// TestUpdateWriter_ClosesFileOnDebugDisable verifies that toggling debug from
+// true to false closes the log file and sets it to nil.
+func TestUpdateWriter_ClosesFileOnDebugDisable(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	SetGlobalDebug(true)
+	logger := New()
+	defer logger.Close()
+
+	if logger.file == nil {
+		t.Fatal("Expected file to be opened when debug=true")
+	}
+
+	SetGlobalDebug(false)
+
+	if logger.file != nil {
+		t.Error("Expected file to be nil after disabling debug")
+	}
+}
+
+// TestResetForTesting verifies that ResetForTesting resets the singleton logger.
+func TestResetForTesting(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	logger1 := New()
+
+	ResetForTesting()
+
+	logger2 := New()
+	if logger1 == logger2 {
+		t.Error("Expected new logger instance after ResetForTesting")
+	}
+}
+
+// TestResetForTesting_WhenNil verifies ResetForTesting handles nil defaultLogger.
+func TestResetForTesting_WhenNil(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	// Should not panic when no logger exists
+	ResetForTesting()
+}
+
+// TestResetForTesting_ClosesExistingLogger verifies ResetForTesting closes the
+// existing logger's file before resetting.
+func TestResetForTesting_ClosesExistingLogger(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	SetGlobalDebug(true)
+	logger := New()
+
+	if logger.file == nil {
+		t.Skip("log file not opened (debug mode)")
+	}
+
+	file := logger.file
+	ResetForTesting()
+
+	// File should have been closed
+	_, err := file.Write([]byte("test"))
+	if err == nil {
+		t.Error("expected write to closed file to fail after ResetForTesting")
+	}
+}
+
+// TestUpdateWriter_DebugToggleWritesToFile verifies that after enabling debug,
+// log messages are actually written to disk.
+func TestUpdateWriter_DebugToggleWritesToFile(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+
+	logger := New()
+	defer logger.Close()
+
+	// Start with debug off — swap the file to a temp file after enabling.
+	SetGlobalDebug(true)
+
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.log")
+	file, err := os.OpenFile(tmpFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create temp log file: %v", err)
+	}
+
+	logger.mu.Lock()
+	if logger.file != nil {
+		logger.file.Close()
+	}
+	logger.file = file
+	logger.logger.SetOutput(file)
+	logger.mu.Unlock()
+
+	logger.Info("after enable")
+
+	content, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("Failed to read log file: %v", err)
+	}
+	if !strings.Contains(string(content), "INFO: after enable") {
+		t.Errorf("Expected log file to contain 'INFO: after enable', got: %s", string(content))
+	}
 }

@@ -2,11 +2,7 @@ package publisher
 
 import (
 	"context"
-	"os"
-	"os/signal"
 	"sync"
-	"sync/atomic"
-	"syscall"
 	"time"
 
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
@@ -15,25 +11,53 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk/internal/redaction"
 )
 
-// Publisher handles asynchronous event publishing to the MCPCat API
-type Publisher struct {
-	queue         chan *core.Event
-	apiClient     *mcpcatapi.APIClient
-	logger        *logging.Logger
-	redactFn      core.RedactFunc
-	wg            sync.WaitGroup
-	ctx           context.Context
-	cancel        context.CancelFunc
-	shutdownCh    chan struct{}
-	shutdownOnce  sync.Once
-	signalHandler atomic.Bool
+var (
+	globalPub *Publisher
+	globalMu  sync.Mutex
+)
+
+// GetOrInit returns the global publisher, creating it on first call.
+// Unlike sync.Once, this allows re-initialization after ShutdownGlobal.
+func GetOrInit(redactFn core.RedactFunc) *Publisher {
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	if globalPub == nil {
+		globalPub = New(redactFn)
+	}
+	return globalPub
 }
 
-// New creates a new Publisher instance and starts worker goroutines
+// ShutdownGlobal shuts down the global publisher and resets it so that
+// GetOrInit can create a fresh instance on the next call.
+func ShutdownGlobal(ctx context.Context) error {
+	globalMu.Lock()
+	pub := globalPub
+	globalPub = nil
+	globalMu.Unlock()
+
+	if pub != nil {
+		return pub.Shutdown(ctx)
+	}
+	return nil
+}
+
+// Publisher handles asynchronous event publishing to the MCPCat API.
+type Publisher struct {
+	queue        chan *core.Event
+	apiClient    *mcpcatapi.APIClient
+	logger       *logging.Logger
+	redactFn     core.RedactFunc
+	wg           sync.WaitGroup
+	closeMu      sync.Mutex
+	closed       bool
+	shutdownCh   chan struct{}
+	shutdownOnce sync.Once
+}
+
+// New creates a new Publisher instance and starts worker goroutines.
 func New(redactFn core.RedactFunc) *Publisher {
 	logger := logging.New()
 
-	// Create API configuration with default URL
 	cfg := mcpcatapi.NewConfiguration()
 	cfg.Servers = mcpcatapi.ServerConfigurations{
 		{
@@ -44,98 +68,61 @@ func New(redactFn core.RedactFunc) *Publisher {
 
 	apiClient := mcpcatapi.NewAPIClient(cfg)
 
-	ctx, cancel := context.WithCancel(context.Background())
-
 	p := &Publisher{
 		queue:      make(chan *core.Event, QueueSize),
 		apiClient:  apiClient,
 		logger:     logger,
 		redactFn:   redactFn,
-		ctx:        ctx,
-		cancel:     cancel,
 		shutdownCh: make(chan struct{}),
 	}
 
-	// Start worker pool
 	for i := 0; i < MaxWorkers; i++ {
 		p.wg.Add(1)
 		go p.worker(i)
 	}
-
-	// Start automatic signal handler for graceful shutdown
-	go p.handleSignals()
 
 	logger.Infof("Publisher started with %d workers and queue size %d", MaxWorkers, QueueSize)
 
 	return p
 }
 
-// handleSignals listens for OS signals and triggers graceful shutdown
-func (p *Publisher) handleSignals() {
-	if !p.signalHandler.CompareAndSwap(false, true) {
-		// Signal handler already running
-		return
-	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case sig := <-sigChan:
-		p.logger.Infof("Received signal %v, draining event queue...", sig)
-		p.Shutdown()
-		// Give logger time to flush before exiting
-		time.Sleep(100 * time.Millisecond)
-		os.Exit(0)
-	case <-p.shutdownCh:
-		// Publisher already shut down manually
-		return
-	}
-}
-
-// worker processes events from the queue and publishes them to the API
+// worker processes events from the queue until the channel is closed.
+// Using range ensures all queued events are drained before the worker exits.
 func (p *Publisher) worker(id int) {
 	defer p.wg.Done()
 
 	p.logger.Debugf("Worker %d started", id)
 
-	for {
-		select {
-		case <-p.ctx.Done():
-			p.logger.Debugf("Worker %d shutting down", id)
-			return
-		case event := <-p.queue:
-			if event == nil {
-				continue
-			}
-
+	for event := range p.queue {
+		if event != nil {
 			p.publishEvent(event, id)
 		}
 	}
+
+	p.logger.Debugf("Worker %d stopped", id)
 }
 
-// publishEvent sends a single event to the MCPCat API
+// publishEvent sends a single event to the MCPCat API.
 func (p *Publisher) publishEvent(event *core.Event, workerID int) {
-	// Apply redaction if a redact function is configured
 	if p.redactFn != nil {
 		err := redaction.RedactEvent(event, p.redactFn)
 		if err != nil {
 			p.logger.Warnf("Worker %d redaction failed for event %s: %v - publishing with error placeholders",
 				workerID, event.GetId(), err)
-			// Event has been sanitized with error placeholders, safe to continue publishing
 		} else {
 			p.logger.Debugf("Worker %d applied redaction to event %s", workerID, event.GetId())
 		}
 	}
 
-	// Set a reasonable timeout for the API call
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Publish event (no authentication needed - public API)
 	_, resp, err := p.apiClient.EventsAPI.PublishEvent(ctx).
 		PublishEventRequest(event.PublishEventRequest).
 		Execute()
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 
 	if err != nil {
 		p.logger.Errorf("Worker %d failed to publish event: %v", workerID, err)
@@ -147,29 +134,42 @@ func (p *Publisher) publishEvent(event *core.Event, workerID int) {
 
 	if resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		p.logger.Debugf("Worker %d successfully published event %s", workerID, event.GetId())
-	} else {
+	} else if resp != nil {
 		p.logger.Warnf("Worker %d received unexpected status code: %d", workerID, resp.StatusCode)
 	}
 }
 
-// Publish enqueues an event for publishing. If the queue is full, the newest event is dropped.
-func (p *Publisher) Publish(event *core.Event) {
+// Publish enqueues an event for publishing. Returns true if the event was
+// accepted, false if it was dropped (nil event, queue full, or shutting down).
+func (p *Publisher) Publish(event *core.Event) bool {
 	if event == nil {
-		return
+		return false
+	}
+
+	p.closeMu.Lock()
+	if p.closed {
+		p.closeMu.Unlock()
+		p.logger.Warnf("Publish rejected (shutting down), dropping event %s", event.GetId())
+		return false
 	}
 
 	select {
 	case p.queue <- event:
-		// Successfully enqueued
+		p.closeMu.Unlock()
 		p.logger.Debugf("Event %s enqueued for publishing", event.GetId())
+		return true
 	default:
-		// Queue is full, drop the newest event
+		p.closeMu.Unlock()
 		p.logger.Warnf("Queue full, dropping event %s", event.GetId())
+		return false
 	}
 }
 
-// Shutdown gracefully shuts down the publisher, waiting up to 5 seconds for queued events to be published
-func (p *Publisher) Shutdown() {
+// Shutdown gracefully shuts down the publisher, waiting for queued events to be
+// published until the provided context is done. If ctx has no deadline, a
+// default 5-second timeout is applied.
+func (p *Publisher) Shutdown(ctx context.Context) error {
+	var shutdownErr error
 	p.shutdownOnce.Do(func() {
 		queuedCount := len(p.queue)
 		if queuedCount > 0 {
@@ -178,10 +178,19 @@ func (p *Publisher) Shutdown() {
 			p.logger.Info("Publisher shutting down...")
 		}
 
-		// Stop accepting new events by canceling context
-		p.cancel()
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+		}
 
-		// Wait for workers to finish or timeout after 5 seconds
+		// Close the queue under the lock so no concurrent Publish can write
+		// to the closed channel. Workers will drain remaining events via range.
+		p.closeMu.Lock()
+		p.closed = true
+		close(p.queue)
+		p.closeMu.Unlock()
+
 		done := make(chan struct{})
 		go func() {
 			p.wg.Wait()
@@ -190,17 +199,13 @@ func (p *Publisher) Shutdown() {
 
 		select {
 		case <-done:
-			remaining := len(p.queue)
-			if remaining > 0 {
-				p.logger.Warnf("Shutdown complete, but %d events remain unpublished", remaining)
-			} else {
-				p.logger.Info("All events published successfully")
-			}
-		case <-time.After(5 * time.Second):
-			remaining := len(p.queue)
-			p.logger.Warnf("Shutdown timeout reached, %d events may not have been published", remaining)
+			p.logger.Info("All events published successfully")
+		case <-ctx.Done():
+			p.logger.Warnf("Shutdown timeout reached, some events may not have been published")
+			shutdownErr = ctx.Err()
 		}
 
 		close(p.shutdownCh)
 	})
+	return shutdownErr
 }

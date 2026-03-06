@@ -20,10 +20,10 @@ type Logger struct {
 }
 
 var (
-	defaultLogger     *Logger
-	defaultLoggerOnce sync.Once
-	globalDebug       bool
-	globalDebugMu     sync.RWMutex
+	defaultLogger *Logger
+	loggerMu      sync.Mutex
+	globalDebug   bool
+	globalDebugMu sync.RWMutex
 )
 
 // SetGlobalDebug sets the global debug flag for all logger instances
@@ -32,7 +32,8 @@ func SetGlobalDebug(debug bool) {
 	defer globalDebugMu.Unlock()
 	globalDebug = debug
 
-	// Update existing default logger if it exists
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
 	if defaultLogger != nil {
 		defaultLogger.mu.Lock()
 		defaultLogger.debug = debug
@@ -41,12 +42,26 @@ func SetGlobalDebug(debug bool) {
 	}
 }
 
-// New creates a new logger instance
+// New returns the singleton logger, creating it on first call.
+// After ResetForTesting, a fresh logger is created on the next call.
 func New() *Logger {
-	defaultLoggerOnce.Do(func() {
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
+	if defaultLogger == nil {
 		defaultLogger = newLogger()
-	})
+	}
 	return defaultLogger
+}
+
+// ResetForTesting closes the current logger and resets the singleton
+// so the next New() call creates a fresh instance.
+func ResetForTesting() {
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
+	if defaultLogger != nil {
+		defaultLogger.Close()
+	}
+	defaultLogger = nil
 }
 
 func newLogger() *Logger {
@@ -54,40 +69,55 @@ func newLogger() *Logger {
 	debug := globalDebug
 	globalDebugMu.RUnlock()
 
-	homeDir, _ := os.UserHomeDir()
-	logPath := filepath.Join(homeDir, "mcpcat.log")
-
-	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		file = os.Stderr
-	}
-
-	logger := &Logger{
-		file:  file,
+	l := &Logger{
 		debug: debug,
 	}
 
-	// Set the writer based on debug flag
-	var writer io.Writer
 	if debug {
-		writer = file
-	} else {
-		writer = io.Discard
+		l.openLogFile()
 	}
-	logger.logger = log.New(writer, "[MCPCat] ", log.LstdFlags)
 
-	return logger
-}
-
-// updateWriter updates the logger's writer based on the debug flag
-func (l *Logger) updateWriter() {
 	var writer io.Writer
-	if l.debug {
+	if debug && l.file != nil {
 		writer = l.file
 	} else {
 		writer = io.Discard
 	}
-	l.logger.SetOutput(writer)
+	l.logger = log.New(writer, "[MCPCat] ", log.LstdFlags)
+
+	return l
+}
+
+// openLogFile opens ~/mcpcat.log for appending. On failure the file field
+// stays nil and all output silently goes to io.Discard, which avoids ever
+// falling back to stderr and corrupting STDIO-based MCP transport.
+func (l *Logger) openLogFile() {
+	homeDir, _ := os.UserHomeDir()
+	logPath := filepath.Join(homeDir, "mcpcat.log")
+	file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		l.file = nil
+		return
+	}
+	l.file = file
+}
+
+func (l *Logger) updateWriter() {
+	if l.debug {
+		if l.file == nil {
+			l.openLogFile()
+		}
+		if l.file != nil {
+			l.logger.SetOutput(l.file)
+			return
+		}
+	} else {
+		if l.file != nil {
+			l.file.Close()
+			l.file = nil
+		}
+	}
+	l.logger.SetOutput(io.Discard)
 }
 
 // Info logs an informational message
@@ -128,7 +158,6 @@ func (l *Logger) Errorf(format string, args ...interface{}) {
 
 // Debug logs a debug message
 func (l *Logger) Debug(msg string) {
-	// TODO: Add debug level control via environment variable
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.logger.Printf("DEBUG: %s", msg)
@@ -141,7 +170,7 @@ func (l *Logger) Debugf(format string, args ...interface{}) {
 
 // Close closes the log file
 func (l *Logger) Close() error {
-	if l.file != nil && l.file != os.Stderr {
+	if l.file != nil {
 		return l.file.Close()
 	}
 	return nil

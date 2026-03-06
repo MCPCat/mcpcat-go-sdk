@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 
@@ -8,64 +9,60 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 )
 
-// Global registry for server->MCPcat mapping
 var (
-	serverMCPcatMap = make(map[uintptr]*core.MCPcatInstance)
+	serverMCPcatMap = make(map[any]*core.MCPcatInstance)
 	registryMu      sync.RWMutex
+	logger          = logging.New()
 )
 
-// Register stores the MCPcat instance for a given server
+// Register stores the MCPcat instance for a given server.
+// The server must be a pointer type (as all MCP server types are).
 func Register(server any, instance *core.MCPcatInstance) {
-	// Use reflection to get the actual pointer value
-	ptr := getPointerValue(server)
-	logger := logging.New()
-	logger.Debugf("Registry: Registering server %T at pointer 0x%x", server, ptr)
+	mustBePointer(server)
+
+	logger.Debugf("Registry: Registering server %T", server)
 
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	serverMCPcatMap[ptr] = instance
+	serverMCPcatMap[server] = instance
 	logger.Debugf("Registry: Map now contains %d entries", len(serverMCPcatMap))
 }
 
-// Get retrieves the MCPcat instance for a given server
+// Get retrieves the MCPcat instance for a given server.
 func Get(server any) *core.MCPcatInstance {
-	// Use reflection to get the actual pointer value
-	ptr := getPointerValue(server)
-	logger := logging.New()
-	logger.Debugf("Registry: Looking up server %T at pointer 0x%x", server, ptr)
+	if server == nil {
+		return nil
+	}
 
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 
-	instance := serverMCPcatMap[ptr]
+	instance := serverMCPcatMap[server]
 	if instance == nil {
-		logger.Debugf("Registry: No instance found. Map contains %d entries:", len(serverMCPcatMap))
-		for p := range serverMCPcatMap {
-			logger.Debugf("  - Registered pointer: 0x%x", p)
-		}
-	} else {
-		logger.Debugf("Registry: Found instance for pointer 0x%x", ptr)
+		logger.Debugf("Registry: No instance found for %T. Map contains %d entries", server, len(serverMCPcatMap))
 	}
 	return instance
 }
 
-// Unregister removes a server from the registry
+// Unregister removes a server from the registry.
 func Unregister(server any) {
-	// Use reflection to get the actual pointer value
-	ptr := getPointerValue(server)
+	if server == nil {
+		return
+	}
+
 	registryMu.Lock()
 	defer registryMu.Unlock()
-	delete(serverMCPcatMap, ptr)
+	delete(serverMCPcatMap, server)
 }
 
-// getPointerValue extracts the actual pointer value from an interface using reflection
-func getPointerValue(server any) uintptr {
+// mustBePointer panics if server is nil or not a pointer type. This catches
+// misuse at registration time rather than silently mapping all value types
+// to the same entry.
+func mustBePointer(server any) {
 	if server == nil {
-		return 0
+		panic("registry: server must not be nil")
 	}
-	v := reflect.ValueOf(server)
-	if v.Kind() == reflect.Ptr {
-		return v.Pointer()
+	if reflect.ValueOf(server).Kind() != reflect.Ptr {
+		panic(fmt.Sprintf("registry: server must be a pointer, got %T", server))
 	}
-	return 0
 }

@@ -30,13 +30,16 @@ jobs:
         cd ../officialsdk && go mod download
 
     - name: Run tests
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: |
+        go test -v -race -coverprofile=coverage-root.out ./...
+        cd mcpgo && go test -v -race -coverprofile=coverage-mcpgo.out ./...
+        cd ../officialsdk && go test -v -race -coverprofile=coverage-officialsdk.out ./...
 
     - name: Upload coverage
       if: matrix.go-version == 'stable'
       uses: codecov/codecov-action@v4
       with:
-        file: ./coverage.out
+        files: ./coverage-root.out,./mcpgo/coverage-mcpgo.out,./officialsdk/coverage-officialsdk.out
         fail_ci_if_error: false
       continue-on-error: true
 

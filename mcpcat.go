@@ -3,6 +3,7 @@ package mcpcat
 import (
 	"context"
 	"errors"
+	"os"
 
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/event"
@@ -38,8 +39,9 @@ func UnregisterServer(server any) {
 
 // InitPublisher initializes the global event publisher and returns a publish function.
 // The returned function can be called to publish events asynchronously.
-func InitPublisher(redactFn RedactFunc) func(evt *Event) {
-	pub := publisher.GetOrInit(redactFn)
+// If apiBaseURL is empty, the default MCPCat API URL is used.
+func InitPublisher(redactFn RedactFunc, apiBaseURL string) func(evt *Event) {
+	pub := publisher.GetOrInit(redactFn, apiBaseURL)
 	return func(evt *Event) {
 		if evt != nil {
 			pub.Publish(evt)
@@ -95,6 +97,18 @@ func RedactEvent(evt *Event, redactFn RedactFunc) error {
 // ConvertToMap converts any value to map[string]any or []any via JSON round-trip.
 func ConvertToMap(v any) any {
 	return event.ConvertToMap(v)
+}
+
+// ResolveAPIBaseURL returns the API base URL to use, applying the priority:
+// code option > MCPCAT_API_URL env var > empty string (publisher uses default).
+func ResolveAPIBaseURL(optionURL string) string {
+	if optionURL != "" {
+		return optionURL
+	}
+	if envURL := os.Getenv("MCPCAT_API_URL"); envURL != "" {
+		return envURL
+	}
+	return ""
 }
 
 // Ptr returns a pointer to the given value. Convenience helper for integration modules.

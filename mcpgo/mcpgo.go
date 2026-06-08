@@ -43,6 +43,11 @@ type Options struct {
 
 	// RedactSensitiveInformation redacts sensitive data before sending to MCPCat.
 	RedactSensitiveInformation func(text string) string
+
+	// APIBaseURL overrides the default MCPCat API endpoint.
+	// When empty, the SDK falls back to the MCPCAT_API_URL environment variable,
+	// and then to the built-in default (https://api.mcpcat.io).
+	APIBaseURL string
 }
 
 // DefaultOptions returns a new Options with sensible defaults.
@@ -76,11 +81,14 @@ func Track(mcpServer *server.MCPServer, projectID string, opts *Options) (func(c
 	}
 	server.WithHooks(hooks)(mcpServer)
 
+	apiBaseURL := mcpcat.ResolveAPIBaseURL(opts.APIBaseURL)
+
 	coreOpts := &mcpcat.Options{
 		DisableReportMissing:       opts.DisableReportMissing,
 		DisableToolCallContext:     opts.DisableToolCallContext,
 		Debug:                      opts.Debug,
 		RedactSensitiveInformation: opts.RedactSensitiveInformation,
+		APIBaseURL:                 apiBaseURL,
 	}
 
 	instance := &mcpcat.MCPcatInstance{
@@ -91,7 +99,7 @@ func Track(mcpServer *server.MCPServer, projectID string, opts *Options) (func(c
 	mcpcat.RegisterServer(mcpServer, instance)
 	mcpcat.SetDebug(opts.Debug)
 
-	publishFn := mcpcat.InitPublisher(opts.RedactSensitiveInformation)
+	publishFn := mcpcat.InitPublisher(opts.RedactSensitiveInformation, apiBaseURL)
 
 	sessionMap := addTracingToHooks(hooks, opts, publishFn)
 	registerGetMoreToolsIfEnabled(mcpServer, coreOpts)

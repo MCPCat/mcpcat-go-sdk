@@ -1,6 +1,7 @@
 package diagnostics
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
@@ -66,5 +67,38 @@ func TestInit_RegistersSink(t *testing.T) {
 	logging.New().Info("a setup line")
 	if n := bufferLenForTest(); n == 0 {
 		t.Fatal("Init must register the sink so Info entries are captured")
+	}
+}
+
+func TestCapture_IgnoresDebug(t *testing.T) {
+	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	ResetForTest()
+	defer ResetForTest()
+
+	Init("p", false, "x", "y")
+
+	capture(logging.LevelDebug, "x")
+	if n := bufferLenForTest(); n != 0 {
+		t.Fatalf("debug entries must be ignored: got buffer len %d, want 0", n)
+	}
+
+	capture(logging.LevelInfo, "y")
+	if n := bufferLenForTest(); n != 1 {
+		t.Fatalf("info entries must be captured: got buffer len %d, want 1", n)
+	}
+}
+
+func TestCapture_DropOldestAtMaxBuffer(t *testing.T) {
+	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	ResetForTest()
+	defer ResetForTest()
+
+	Init("p", false, "x", "y")
+
+	for i := 0; i < maxBuffer+5; i++ {
+		capture(logging.LevelInfo, "msg "+strconv.Itoa(i))
+	}
+	if n := bufferLenForTest(); n != maxBuffer {
+		t.Fatalf("drop-oldest must cap the buffer: got len %d, want %d", n, maxBuffer)
 	}
 }

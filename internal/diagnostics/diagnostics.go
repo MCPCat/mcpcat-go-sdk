@@ -28,19 +28,27 @@ var (
 // Never panics.
 func Init(projectID string, disabled bool, integration, mcpSDKPath string) {
 	defer func() { _ = recover() }()
+
 	mu.Lock()
 	if initialized {
 		mu.Unlock()
 		return
 	}
 	initialized = true
-	enabled = !disabled && !envDisabled()
-	if !enabled {
-		mu.Unlock()
+	en := !disabled && !envDisabled()
+	enabled = en
+	mu.Unlock()
+
+	if !en {
 		return
 	}
-	staticAttrs = buildStaticAttributes(projectID, integration, mcpSDKPath)
-	sdkVersion = session.GetDependencyVersion(sdkModulePath)
+
+	attrs := buildStaticAttributes(projectID, integration, mcpSDKPath)
+	ver := session.GetDependencyVersion(sdkModulePath)
+
+	mu.Lock()
+	staticAttrs = attrs
+	sdkVersion = ver
 	mu.Unlock()
 
 	logging.SetDiagnosticsSink(capture)
@@ -53,6 +61,7 @@ func capture(level logging.Level, msg string) {
 	if level == logging.LevelDebug {
 		return
 	}
+	rec := buildRecord(level, msg)
 	mu.Lock()
 	if !enabled {
 		mu.Unlock()
@@ -61,7 +70,7 @@ func capture(level logging.Level, msg string) {
 	if len(buffer) >= maxBuffer {
 		buffer = buffer[1:]
 	}
-	buffer = append(buffer, buildRecord(level, msg))
+	buffer = append(buffer, rec)
 	schedule := !flushPending
 	if schedule {
 		flushPending = true

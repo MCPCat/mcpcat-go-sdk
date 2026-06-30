@@ -171,7 +171,6 @@ Diagnostics are on by default and can be turned off completely with either:
 | `RedactSensitiveInformation` | `func(string) string` | `nil` | Custom redaction applied to all text data before sending |
 | `Identify` | callback | `nil` | Attach user information to sessions |
 | `Hooks` | `*server.Hooks` | `nil` | Pre-existing hooks to merge with (mcp-go only) |
-| `DisableDiagnostics` | `bool` | `false` | When `true`, disables MCPCat's internal SDK diagnostics (anonymous setup/error reporting). Also disable via the `DISABLE_DIAGNOSTICS` env var. |
 
 ## Free for open source
 

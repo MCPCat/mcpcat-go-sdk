@@ -154,14 +154,11 @@ func LogEvent(logger interface{ Infof(string, ...any) }, evt *Event, title strin
 	// Error status
 	if evt.IsError != nil && *evt.IsError {
 		logger.Infof("  Is Error: true")
-		if evt.Error != nil {
-			logger.Infof("  Error Details: %v", evt.Error)
-		}
 	}
 
-	// User intent
+	// User intent (length only — never the text)
 	if evt.UserIntent != nil {
-		logger.Infof("  User Intent: %s", *evt.UserIntent)
+		logger.Infof("  User Intent: %d chars", len(*evt.UserIntent))
 	}
 
 	// Resource name (for resource events)
@@ -169,25 +166,14 @@ func LogEvent(logger interface{ Infof(string, ...any) }, evt *Event, title strin
 		logger.Infof("  Resource Name: %s", *evt.ResourceName)
 	}
 
-	// Parameters
+	// Parameters (count only)
 	if len(evt.Parameters) > 0 {
-		logger.Infof("  Parameters:")
-		for k, v := range evt.Parameters {
-			logger.Infof("    %s: %v", k, v)
-		}
+		logger.Infof("  Parameters: %d field(s)", len(evt.Parameters))
 	}
 
-	// Response
+	// Response (count only)
 	if len(evt.Response) > 0 {
-		logger.Infof("  Response:")
-		for k, v := range evt.Response {
-			// Truncate long values for readability
-			valStr := fmt.Sprintf("%v", v)
-			if len(valStr) > 200 {
-				valStr = valStr[:197] + "..."
-			}
-			logger.Infof("    %s: %s", k, valStr)
-		}
+		logger.Infof("  Response: %d field(s)", len(evt.Response))
 	}
 
 	// Session metadata
@@ -214,20 +200,14 @@ func LogEvent(logger interface{ Infof(string, ...any) }, evt *Event, title strin
 		logger.Infof("    IP Address: %s", *evt.IpAddress)
 	}
 
-	// Identity info
+	// Identity info (Actor ID kept; name value dropped; data counted)
 	if evt.IdentifyActorGivenId != nil || evt.IdentifyActorName != nil {
 		logger.Infof("  Identity:")
 		if evt.IdentifyActorGivenId != nil {
 			logger.Infof("    Actor ID: %s", *evt.IdentifyActorGivenId)
 		}
-		if evt.IdentifyActorName != nil {
-			logger.Infof("    Actor Name: %s", *evt.IdentifyActorName)
-		}
 		if len(evt.IdentifyData) > 0 {
-			logger.Infof("    Additional Data:")
-			for k, v := range evt.IdentifyData {
-				logger.Infof("      %s: %v", k, v)
-			}
+			logger.Infof("    Additional Data: %d field(s)", len(evt.IdentifyData))
 		}
 	}
 

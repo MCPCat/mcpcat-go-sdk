@@ -319,3 +319,10 @@ func TestMCPcatInstance(t *testing.T) {
 		t.Errorf("Expected ServerRef 'test-server', got '%v'", instance.ServerRef)
 	}
 }
+
+func TestOptions_DisableDiagnosticsField(t *testing.T) {
+	o := Options{DisableDiagnostics: true}
+	if !o.DisableDiagnostics {
+		t.Fatal("DisableDiagnostics field must exist and be settable")
+	}
+}

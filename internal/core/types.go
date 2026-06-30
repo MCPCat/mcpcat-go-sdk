@@ -55,6 +55,12 @@ type Options struct {
 	// Exporters configure telemetry exporters to send events to external systems.
 	// Available exporters: otlp, datadog, sentry (TODO: implement in future).
 	Exporters map[string]ExporterConfig
+
+	// DisableDiagnostics disables MCPCat's internal SDK diagnostics (anonymous
+	// operational error/setup reporting used to detect SDK setup failures).
+	// On by default; also disable via the DISABLE_DIAGNOSTICS env var.
+	// Local ~/mcpcat.log logging is unaffected.
+	DisableDiagnostics bool
 }
 
 // Event wraps the API publish request and leaves room for SDK-specific fields.

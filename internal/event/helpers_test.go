@@ -8,6 +8,7 @@ import (
 
 	mcpcatapi "github.com/mcpcat/mcpcat-go-api"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
+	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 )
 
 func TestNewEventID(t *testing.T) {
@@ -542,6 +543,53 @@ func TestLogEvent(t *testing.T) {
 			t.Error("expected to find title log entry")
 		}
 	})
+}
+
+func TestLogEvent_NoPayloadLeak(t *testing.T) {
+	logging.ResetForTesting()
+	defer logging.ResetForTesting()
+	defer logging.SetDiagnosticsSink(nil)
+
+	const (
+		secretParam  = "SUPER_SECRET_PARAM_VALUE"
+		secretResp   = "SUPER_SECRET_RESPONSE_VALUE"
+		secretIntent = "SUPER_SECRET_INTENT_TEXT"
+		secretActor  = "SUPER_SECRET_ACTOR_NAME"
+		secretData   = "SUPER_SECRET_IDENTIFY_DATA"
+		secretIP     = "203.0.113.42"
+	)
+
+	var captured []string
+	logging.SetDiagnosticsSink(func(_ logging.Level, msg string) {
+		captured = append(captured, msg)
+	})
+
+	intent := secretIntent
+	isErr := true
+	actorName := secretActor
+	evt := &Event{}
+	evt.SessionId = "ses_1"
+	evt.UserIntent = &intent
+	evt.IsError = &isErr
+	evt.IdentifyActorName = &actorName
+	evt.Parameters = map[string]any{"k": secretParam}
+	evt.Response = map[string]any{"r": secretResp}
+	evt.IdentifyData = map[string]any{"d": secretData}
+	ipAddr := secretIP
+	evt.IpAddress = &ipAddr
+
+	LogEvent(logging.New(), evt, "Test Event")
+
+	joined := strings.Join(captured, "\n")
+	for _, s := range []string{secretParam, secretResp, secretIntent, secretActor, secretData, secretIP} {
+		if strings.Contains(joined, s) {
+			t.Errorf("payload value %q leaked into diagnostics:\n%s", s, joined)
+		}
+	}
+	// Sanity: counts/presence still emitted.
+	if !strings.Contains(joined, "Parameters: 1 field") {
+		t.Errorf("expected parameter count, got:\n%s", joined)
+	}
 }
 
 // Helper functions

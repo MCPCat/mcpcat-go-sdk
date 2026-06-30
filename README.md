@@ -148,6 +148,19 @@ If your server already uses mcp-go hooks, pass them via `Options.Hooks` and MCPC
 shutdown, err := mcpcat.Track(s, "proj_YOUR_PROJECT_ID", &mcpcat.Options{Hooks: hooks})
 ```
 
+### Internal diagnostics
+
+To help us catch and fix broken installs, the SDK sends MCPCat a small, anonymized
+signal when setup or runtime errors occur — never your tool calls, your responses,
+or anything about your users. Records carry only operational metadata, such as your
+project ID (or an anonymous install ID when none is set), SDK version, and Go
+runtime/OS/arch. Your local `~/mcpcat.log` is unchanged.
+
+Diagnostics are on by default and can be turned off completely with either:
+
+- `mcpcat.Options{DisableDiagnostics: true}` passed to `Track`, or
+- the `DISABLE_DIAGNOSTICS` environment variable.
+
 ## Configuration Options
 
 | Option | Type | Default | Description |

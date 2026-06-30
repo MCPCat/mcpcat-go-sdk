@@ -56,6 +56,12 @@ type Options struct {
 	// Available exporters: otlp, datadog, sentry (TODO: implement in future).
 	Exporters map[string]ExporterConfig
 
+	// DisableDiagnostics disables MCPCat's internal SDK diagnostics (anonymous
+	// operational error/setup reporting used to detect SDK setup failures).
+	// On by default; also disable via the DISABLE_DIAGNOSTICS env var.
+	// Local ~/mcpcat.log logging is unaffected.
+	DisableDiagnostics bool
+
 	// APIBaseURL overrides the default MCPCat API endpoint.
 	// When empty, the SDK falls back to the MCPCAT_API_URL environment variable,
 	// and then to the built-in default (https://api.mcpcat.io).

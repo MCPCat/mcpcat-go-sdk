@@ -9,7 +9,7 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 )
 
-// captureLogger swaps the singleton logger's writer to buf and returns a restore func.
+// captureLogger swaps the singleton logger's writer to buf for the duration of the test.
 func captureLogger(t *testing.T, buf *bytes.Buffer) {
 	t.Helper()
 	lg := logging.New()

@@ -196,9 +196,6 @@ func LogEvent(logger interface{ Infof(string, ...any) }, evt *Event, title strin
 	if evt.McpcatVersion != nil {
 		logger.Infof("    MCPCat Version: %s", *evt.McpcatVersion)
 	}
-	if evt.IpAddress != nil {
-		logger.Infof("    IP Address: %s", *evt.IpAddress)
-	}
 
 	// Identity info (Actor ID kept; name value dropped; data counted)
 	if evt.IdentifyActorGivenId != nil || evt.IdentifyActorName != nil {

@@ -556,6 +556,7 @@ func TestLogEvent_NoPayloadLeak(t *testing.T) {
 		secretIntent = "SUPER_SECRET_INTENT_TEXT"
 		secretActor  = "SUPER_SECRET_ACTOR_NAME"
 		secretData   = "SUPER_SECRET_IDENTIFY_DATA"
+		secretIP     = "203.0.113.42"
 	)
 
 	var captured []string
@@ -574,11 +575,13 @@ func TestLogEvent_NoPayloadLeak(t *testing.T) {
 	evt.Parameters = map[string]any{"k": secretParam}
 	evt.Response = map[string]any{"r": secretResp}
 	evt.IdentifyData = map[string]any{"d": secretData}
+	ipAddr := secretIP
+	evt.IpAddress = &ipAddr
 
 	LogEvent(logging.New(), evt, "Test Event")
 
 	joined := strings.Join(captured, "\n")
-	for _, s := range []string{secretParam, secretResp, secretIntent, secretActor, secretData} {
+	for _, s := range []string{secretParam, secretResp, secretIntent, secretActor, secretData, secretIP} {
 		if strings.Contains(joined, s) {
 			t.Errorf("payload value %q leaked into diagnostics:\n%s", s, joined)
 		}

@@ -47,6 +47,11 @@ type Options struct {
 	// DisableDiagnostics disables MCPCat's internal SDK diagnostics. On by default;
 	// also disable via the DISABLE_DIAGNOSTICS env var. ~/mcpcat.log is unaffected.
 	DisableDiagnostics bool
+
+	// APIBaseURL overrides the default MCPCat API endpoint.
+	// When empty, the SDK falls back to the MCPCAT_API_URL environment variable,
+	// and then to the built-in default (https://api.mcpcat.io).
+	APIBaseURL string
 }
 
 // DefaultOptions returns a new Options with sensible defaults.
@@ -86,12 +91,15 @@ func Track(mcpServer *server.MCPServer, projectID string, opts *Options) (func(c
 	}
 	server.WithHooks(hooks)(mcpServer)
 
+	apiBaseURL := mcpcat.ResolveAPIBaseURL(opts.APIBaseURL)
+
 	coreOpts := &mcpcat.Options{
 		DisableReportMissing:       opts.DisableReportMissing,
 		DisableToolCallContext:     opts.DisableToolCallContext,
 		Debug:                      opts.Debug,
 		RedactSensitiveInformation: opts.RedactSensitiveInformation,
 		DisableDiagnostics:         opts.DisableDiagnostics,
+		APIBaseURL:                 apiBaseURL,
 	}
 
 	instance := &mcpcat.MCPcatInstance{
@@ -102,7 +110,7 @@ func Track(mcpServer *server.MCPServer, projectID string, opts *Options) (func(c
 	mcpcat.RegisterServer(mcpServer, instance)
 	mcpcat.SetDebug(opts.Debug)
 
-	publishFn := mcpcat.InitPublisher(opts.RedactSensitiveInformation)
+	publishFn := mcpcat.InitPublisher(opts.RedactSensitiveInformation, apiBaseURL)
 
 	sessionMap := addTracingToHooks(hooks, opts, publishFn)
 	registerGetMoreToolsIfEnabled(mcpServer, coreOpts)

@@ -18,11 +18,12 @@ var (
 
 // GetOrInit returns the global publisher, creating it on first call.
 // Unlike sync.Once, this allows re-initialization after ShutdownGlobal.
-func GetOrInit(redactFn core.RedactFunc) *Publisher {
+// If apiBaseURL is empty, the default MCPCat API URL is used.
+func GetOrInit(redactFn core.RedactFunc, apiBaseURL string) *Publisher {
 	globalMu.Lock()
 	defer globalMu.Unlock()
 	if globalPub == nil {
-		globalPub = New(redactFn)
+		globalPub = New(redactFn, apiBaseURL)
 	}
 	return globalPub
 }
@@ -55,13 +56,19 @@ type Publisher struct {
 }
 
 // New creates a new Publisher instance and starts worker goroutines.
-func New(redactFn core.RedactFunc) *Publisher {
+// If apiBaseURL is empty, the default MCPCat API URL is used.
+func New(redactFn core.RedactFunc, apiBaseURL string) *Publisher {
 	logger := logging.New()
+
+	baseURL := DefaultAPIBaseURL
+	if apiBaseURL != "" {
+		baseURL = apiBaseURL
+	}
 
 	cfg := mcpcatapi.NewConfiguration()
 	cfg.Servers = mcpcatapi.ServerConfigurations{
 		{
-			URL:         DefaultAPIBaseURL,
+			URL:         baseURL,
 			Description: "MCPCat API",
 		},
 	}

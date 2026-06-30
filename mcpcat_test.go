@@ -56,7 +56,7 @@ func TestInitPublisher(t *testing.T) {
 	// Ensure clean state
 	publisher.ShutdownGlobal(context.Background())
 
-	publishFn := InitPublisher(nil)
+	publishFn := InitPublisher(nil, "")
 	defer Shutdown(context.Background())
 
 	if publishFn == nil {
@@ -75,7 +75,7 @@ func TestInitPublisher_WithRedactFunc(t *testing.T) {
 	publisher.ShutdownGlobal(context.Background())
 
 	redactFn := func(s string) string { return "***" }
-	publishFn := InitPublisher(redactFn)
+	publishFn := InitPublisher(redactFn, "")
 	defer Shutdown(context.Background())
 
 	if publishFn == nil {
@@ -86,7 +86,7 @@ func TestInitPublisher_WithRedactFunc(t *testing.T) {
 func TestShutdown(t *testing.T) {
 	publisher.ShutdownGlobal(context.Background())
 
-	_ = InitPublisher(nil)
+	_ = InitPublisher(nil, "")
 
 	err := Shutdown(context.Background())
 	if err != nil {
@@ -268,6 +268,32 @@ func TestSentinelErrors(t *testing.T) {
 	if !strings.Contains(ErrEmptyProjectID.Error(), "projectID") {
 		t.Error("ErrEmptyProjectID message should mention projectID")
 	}
+}
+
+func TestResolveAPIBaseURL(t *testing.T) {
+	t.Run("option takes precedence over env var", func(t *testing.T) {
+		t.Setenv("MCPCAT_API_URL", "https://env.example.com")
+		got := ResolveAPIBaseURL("https://option.example.com")
+		if got != "https://option.example.com" {
+			t.Errorf("ResolveAPIBaseURL() = %q, want %q", got, "https://option.example.com")
+		}
+	})
+
+	t.Run("env var used when option is empty", func(t *testing.T) {
+		t.Setenv("MCPCAT_API_URL", "https://env.example.com")
+		got := ResolveAPIBaseURL("")
+		if got != "https://env.example.com" {
+			t.Errorf("ResolveAPIBaseURL() = %q, want %q", got, "https://env.example.com")
+		}
+	})
+
+	t.Run("returns empty when neither option nor env var set", func(t *testing.T) {
+		t.Setenv("MCPCAT_API_URL", "")
+		got := ResolveAPIBaseURL("")
+		if got != "" {
+			t.Errorf("ResolveAPIBaseURL() = %q, want empty string", got)
+		}
+	})
 }
 
 func TestDefaultOptions_Wrapper(t *testing.T) {

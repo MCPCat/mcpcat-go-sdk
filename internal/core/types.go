@@ -61,6 +61,11 @@ type Options struct {
 	// On by default; also disable via the DISABLE_DIAGNOSTICS env var.
 	// Local ~/mcpcat.log logging is unaffected.
 	DisableDiagnostics bool
+
+	// APIBaseURL overrides the default MCPCat API endpoint.
+	// When empty, the SDK falls back to the MCPCAT_API_URL environment variable,
+	// and then to the built-in default (https://api.mcpcat.io).
+	APIBaseURL string
 }
 
 // Event wraps the API publish request and leaves room for SDK-specific fields.

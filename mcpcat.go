@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/mcpcat/mcpcat-go-sdk/internal/core"
+	"github.com/mcpcat/mcpcat-go-sdk/internal/diagnostics"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/event"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/logging"
 	"github.com/mcpcat/mcpcat-go-sdk/internal/publisher"
@@ -53,7 +54,9 @@ func InitPublisher(redactFn RedactFunc) func(evt *Event) {
 // the shutdown deadline; if no deadline is set, a default 5-second timeout
 // is applied.
 func Shutdown(ctx context.Context) error {
-	return publisher.ShutdownGlobal(ctx)
+	err := publisher.ShutdownGlobal(ctx)
+	diagnostics.Flush()
+	return err
 }
 
 // SetDebug enables or disables debug logging globally.

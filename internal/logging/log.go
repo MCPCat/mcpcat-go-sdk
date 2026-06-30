@@ -192,6 +192,13 @@ func (l *Logger) Debugf(format string, args ...interface{}) {
 	l.Debug(fmt.Sprintf(format, args...))
 }
 
+// SwapWriterForTest replaces the logger's underlying *log.Logger. For tests only.
+func (l *Logger) SwapWriterForTest(lg *log.Logger) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.logger = lg
+}
+
 // Close closes the log file
 func (l *Logger) Close() error {
 	if l.file != nil {

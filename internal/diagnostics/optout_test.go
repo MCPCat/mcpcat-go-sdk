@@ -102,3 +102,34 @@ func TestCapture_DropOldestAtMaxBuffer(t *testing.T) {
 		t.Fatalf("drop-oldest must cap the buffer: got len %d, want %d", n, maxBuffer)
 	}
 }
+
+func TestInit_Idempotent(t *testing.T) {
+	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	ResetForTest()
+	defer ResetForTest()
+
+	Init("proj_a", false, "officialsdk", "github.com/modelcontextprotocol/go-sdk")
+	// A second Init (different project, disabled=true, different integration) must
+	// be a complete no-op — the first call wins for the whole process.
+	Init("proj_b", true, "mcpgo", "github.com/mark3labs/mcp-go")
+
+	if !Enabled() {
+		t.Fatal("second Init must not flip enabled (idempotency)")
+	}
+
+	var projectID, integration string
+	for _, a := range StaticAttributesForTest() {
+		switch a.Key {
+		case "mcpcat.project_id":
+			projectID = a.Value.StringValue
+		case "mcpcat.integration":
+			integration = a.Value.StringValue
+		}
+	}
+	if projectID != "proj_a" {
+		t.Errorf("first Init must win: project_id = %q, want proj_a", projectID)
+	}
+	if integration != "officialsdk" {
+		t.Errorf("first Init must win: integration = %q, want officialsdk", integration)
+	}
+}

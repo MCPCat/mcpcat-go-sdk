@@ -107,3 +107,21 @@ func TestFlush_DisabledIsNoop(t *testing.T) {
 	capture(logging.LevelInfo, "line")
 	Flush()
 }
+
+func TestFlush_TransportErrorSwallowed(t *testing.T) {
+	// Point at a closed local port so httpClient.Do fails; Flush must swallow the
+	// error (fire-and-forget), not panic, and still drain the buffer.
+	t.Setenv("DIAGNOSTICS_ENDPOINT", "http://127.0.0.1:1/v1/logs")
+	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	ResetForTest()
+	defer ResetForTest()
+
+	Init("proj_1", false, "officialsdk", "github.com/modelcontextprotocol/go-sdk")
+	capture(logging.LevelInfo, "MCPCat setup complete | proj_1")
+
+	Flush() // must return without panic even though the POST fails
+
+	if n := bufferLenForTest(); n != 0 {
+		t.Fatalf("Flush must drain the buffer before the (failing) POST, got len %d", n)
+	}
+}

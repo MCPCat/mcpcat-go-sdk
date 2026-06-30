@@ -682,3 +682,78 @@ func TestUpdateWriter_DebugToggleWritesToFile(t *testing.T) {
 		t.Errorf("Expected log file to contain 'INFO: after enable', got: %s", string(content))
 	}
 }
+
+func TestDiagnosticsSink_ReceivesLevels(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+	defer SetDiagnosticsSink(nil)
+
+	type rec struct {
+		level Level
+		msg   string
+	}
+	var got []rec
+	var mu sync.Mutex
+	SetDiagnosticsSink(func(l Level, m string) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, rec{l, m})
+	})
+
+	lg := New()
+	lg.Info("info-line")
+	lg.Warn("warn-line")
+	lg.Error("error-line")
+	lg.Debug("debug-line")
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []rec{
+		{LevelInfo, "info-line"},
+		{LevelWarn, "warn-line"},
+		{LevelError, "error-line"},
+		{LevelDebug, "debug-line"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d entries, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("entry %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestDiagnosticsSink_FiresWhenDebugFalse(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+	defer SetDiagnosticsSink(nil)
+
+	// Default state: globalDebug == false.
+	var called bool
+	SetDiagnosticsSink(func(l Level, m string) { called = true })
+
+	New().Info("hello")
+
+	if !called {
+		t.Fatal("sink must fire even when debug is false")
+	}
+}
+
+func TestDiagnosticsSink_PanicDoesNotBreakLogging(t *testing.T) {
+	resetGlobalState()
+	defer resetGlobalState()
+	defer SetDiagnosticsSink(nil)
+
+	SetDiagnosticsSink(func(l Level, m string) { panic("boom") })
+
+	lg := New()
+	var buf bytes.Buffer
+	lg.logger = log.New(&buf, "[MCPCat] ", log.LstdFlags)
+
+	lg.Info("survives") // must not panic
+
+	if !strings.Contains(buf.String(), "survives") {
+		t.Fatalf("logging must continue after sink panic, got %q", buf.String())
+	}
+}

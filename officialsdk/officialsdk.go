@@ -41,6 +41,10 @@ type Options struct {
 
 	// RedactSensitiveInformation redacts sensitive data before sending to MCPCat.
 	RedactSensitiveInformation func(text string) string
+
+	// DisableDiagnostics disables MCPCat's internal SDK diagnostics. On by default;
+	// also disable via the DISABLE_DIAGNOSTICS env var. ~/mcpcat.log is unaffected.
+	DisableDiagnostics bool
 }
 
 // DefaultOptions returns a new Options with sensible defaults.
@@ -58,14 +62,20 @@ func DefaultOptions() *Options {
 // releases resources. The shutdown function is idempotent and safe to call
 // multiple times. On error it returns (nil, err).
 func Track(mcpServer *mcp.Server, projectID string, opts *Options) (func(context.Context) error, error) {
+	if opts == nil {
+		opts = DefaultOptions()
+	}
+
+	mcpcat.InitDiagnostics(projectID, opts.DisableDiagnostics, "officialsdk",
+		"github.com/modelcontextprotocol/go-sdk")
+
 	if mcpServer == nil {
+		mcpcat.LogSetupFailed("server must not be nil")
 		return nil, mcpcat.ErrNilServer
 	}
 	if projectID == "" {
+		mcpcat.LogSetupFailed("projectID must not be empty")
 		return nil, mcpcat.ErrEmptyProjectID
-	}
-	if opts == nil {
-		opts = DefaultOptions()
 	}
 
 	coreOpts := &mcpcat.Options{
@@ -73,6 +83,7 @@ func Track(mcpServer *mcp.Server, projectID string, opts *Options) (func(context
 		DisableToolCallContext:     opts.DisableToolCallContext,
 		Debug:                      opts.Debug,
 		RedactSensitiveInformation: opts.RedactSensitiveInformation,
+		DisableDiagnostics:         opts.DisableDiagnostics,
 	}
 
 	instance := &mcpcat.MCPcatInstance{
@@ -103,6 +114,8 @@ func Track(mcpServer *mcp.Server, projectID string, opts *Options) (func(context
 		})
 		return err
 	}
+
+	mcpcat.LogSetupComplete(projectID, coreOpts)
 
 	return shutdownFn, nil
 }

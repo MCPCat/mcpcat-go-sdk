@@ -26,7 +26,8 @@ func TestExport_PostsOTLPWithAuth(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("DIAGNOSTICS_ENDPOINT", srv.URL)
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test; this test asserts export.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 
@@ -80,7 +81,8 @@ func TestExport_TokenOverride(t *testing.T) {
 
 	t.Setenv("DIAGNOSTICS_ENDPOINT", srv.URL)
 	t.Setenv("DIAGNOSTICS_TOKEN", "custom-token-123")
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test; this test asserts export.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 
@@ -112,7 +114,8 @@ func TestFlush_TransportErrorSwallowed(t *testing.T) {
 	// Point at a closed local port so httpClient.Do fails; Flush must swallow the
 	// error (fire-and-forget), not panic, and still drain the buffer.
 	t.Setenv("DIAGNOSTICS_ENDPOINT", "http://127.0.0.1:1/v1/logs")
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test; this test asserts drain behavior.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 

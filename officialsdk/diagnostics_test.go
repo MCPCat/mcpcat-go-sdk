@@ -14,8 +14,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// Keep diagnostics off for the suite by default so unrelated Track tests
-	// never emit real network traffic. Beacon tests opt back in per-test.
+	// Repo-level belt-and-suspenders: the SDK already auto-disables diagnostics
+	// under go test, but we also keep them off for the suite by default so unrelated
+	// Track tests never emit real network traffic. Beacon tests opt back in per-test.
 	_ = os.Setenv("DISABLE_DIAGNOSTICS", "1")
 	os.Exit(m.Run())
 }

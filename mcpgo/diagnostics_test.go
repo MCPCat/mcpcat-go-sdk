@@ -13,6 +13,10 @@ import (
 	"github.com/mcpcat/mcpcat-go-sdk"
 )
 
+// TestMain is a repo-level belt-and-suspenders guard: the SDK already
+// auto-disables diagnostics under go test, but we also pin DISABLE_DIAGNOSTICS=1
+// package-wide so no change to the detection logic can leak traffic from our suite.
+// Beacon tests opt back in per-test with DISABLE_DIAGNOSTICS=false + a local server.
 func TestMain(m *testing.M) {
 	_ = os.Setenv("DISABLE_DIAGNOSTICS", "1")
 	os.Exit(m.Run())

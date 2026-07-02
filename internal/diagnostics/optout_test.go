@@ -8,7 +8,9 @@ import (
 )
 
 func TestInit_EnabledByDefault(t *testing.T) {
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: under go test the SDK auto-disables, so opt back in explicitly
+	// to assert the default (non-test) enabled behavior.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 
@@ -43,7 +45,9 @@ func TestInit_EnvDisableValues(t *testing.T) {
 		})
 	}
 
-	stay := []string{"false", "0", "no", "off", "  "}
+	// Explicit falsy values force-enable diagnostics even under go test.
+	// (Whitespace-only is "unset", covered by the go-test auto-disable tests.)
+	stay := []string{"false", "0", "no", "off"}
 	for _, v := range stay {
 		t.Run("enabled_"+v, func(t *testing.T) {
 			t.Setenv("DISABLE_DIAGNOSTICS", v)
@@ -58,7 +62,8 @@ func TestInit_EnvDisableValues(t *testing.T) {
 }
 
 func TestInit_RegistersSink(t *testing.T) {
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 
@@ -71,7 +76,8 @@ func TestInit_RegistersSink(t *testing.T) {
 }
 
 func TestCapture_IgnoresDebug(t *testing.T) {
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 
@@ -89,7 +95,8 @@ func TestCapture_IgnoresDebug(t *testing.T) {
 }
 
 func TestCapture_DropOldestAtMaxBuffer(t *testing.T) {
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 
@@ -104,7 +111,8 @@ func TestCapture_DropOldestAtMaxBuffer(t *testing.T) {
 }
 
 func TestInit_Idempotent(t *testing.T) {
-	t.Setenv("DISABLE_DIAGNOSTICS", "")
+	// Force-enable: the SDK auto-disables under go test.
+	t.Setenv("DISABLE_DIAGNOSTICS", "false")
 	ResetForTest()
 	defer ResetForTest()
 

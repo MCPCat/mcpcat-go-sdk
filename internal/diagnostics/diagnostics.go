@@ -24,8 +24,13 @@ var (
 )
 
 // Init registers the diagnostics sink and builds static attributes. Idempotent:
-// only the first call per process takes effect. enabled = !disabled && !envDisabled().
-// Never panics.
+// only the first call per process takes effect. Never panics.
+//
+// Diagnostics are enabled unless the DisableDiagnostics option is set, the
+// DISABLE_DIAGNOSTICS env var disables them, or the process is a test binary.
+// The go-test auto-disable protects every consumer's suite (not just ours) from
+// shipping diagnostics; an explicit falsy DISABLE_DIAGNOSTICS (false/0/no/off)
+// is a deliberate opt-in that overrides it.
 func Init(projectID string, disabled bool, integration, mcpSDKPath string) {
 	defer func() { _ = recover() }()
 
@@ -35,7 +40,9 @@ func Init(projectID string, disabled bool, integration, mcpSDKPath string) {
 		return
 	}
 	initialized = true
-	en := !disabled && !envDisabled()
+	flag := envDiagnosticsFlag()
+	en := !disabled && flag != envFlagDisabled &&
+		(flag == envFlagForceEnabled || !isTestEnvironment())
 	enabled = en
 	mu.Unlock()
 

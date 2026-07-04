@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **MCPcat is now AgentCat 🐱** — same team, same product, new name.
+> This module is **frozen**. It keeps working forever (nothing is retracted, old version pins keep resolving), but new development happens in **[`go.agentcat.com/sdk`](https://github.com/agentcathq/agentcat-go-sdk)**.
+> See **[MIGRATION.md](./MIGRATION.md)** to upgrade. `go get go.agentcat.com/sdk`
+
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/static/logo-dark.svg">
